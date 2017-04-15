@@ -40,6 +40,7 @@ Main program function.
 */
 int main(void)
 {
+	//###Hello World
 	//Create the appropriate application class object and initialise
 	CApp::Application = (PApp)(new COculusHubMain());
 
