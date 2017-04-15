@@ -1,0 +1,37 @@
+#include "com_uarthd.hpp"
+
+//==============================================================================
+//CComUartHd
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Function used to raise an OnTxModeISR event when the Tx Enabled state changes
+(or we wish to force a new state)
+*/
+void CComUartHd::DoTxMode(bool state, bool force)
+{
+	//If the state has changed, or we forcing a new state
+	if((state != _txEnable) || force) {
+		_txEnable = state;
+
+		//Raise the OnTxEnable event, to setup the half-duplex transceiver direction
+		this->OnTxModeISR.Call(_txEnable);
+
+		if(_txEnable) {
+			//TRANSMIT
+			//Enable the transmitter interrupts, disable the receiver
+			CLR_BITS(_uart->C2, UART_C2_TCIE_MASK | UART_C2_TE_MASK | UART_C2_RIE_MASK | UART_C2_RE_MASK);
+
+			//Ensure TE is cleared then set so an IDLE character is transmitted (all 1's)
+			SET_BITS(_uart->C2, UART_C2_TIE_MASK | UART_C2_TE_MASK);
+		}
+		else {
+			//RECEIVE
+			//Disable the transmitter interrupts, ensure the receiver is enabled
+			CLR_BITS(_uart->C2, UART_C2_TCIE_MASK | UART_C2_TIE_MASK | UART_C2_TE_MASK);
+			SET_BITS(_uart->C2, UART_C2_RIE_MASK | UART_C2_RE_MASK);
+		}
+	}
+}
+
+
+//==============================================================================

@@ -1,0 +1,350 @@
+17:49:51 **** Incremental Build of configuration Debug for project OculusHubMain ****
+make pre-build main-build 
+Perform Pre-Build Actions (Incriment version numbers)
+C:/Users/s.morris/OculusHub/OculusHubMain/prebuild.bat DEBUG "C:/Users/s.morris/OculusHub/OculusHubMain"
+Performing pre-build commands at 17:49:51.40, 29/03/2017...
+Pre-build Mode "DEBUG"
+Pre-build Project Directory "C:\Users\s.morris\OculusHub\OculusHubMain"
+Version number not incriment for DEBUG builds.
+
+***                Auto Incrimenter                  ***
+***        For build numbers or other symbols        ***
+*** Copyright 2013, Blueprint Design Engineering Ltd ***
+
+Parsing file "C:\Users\s.morris\OculusHub\OculusHubMain\headers\version.h" for symbol "FIRMWARE_VERSION_BUILD"...
+Found symbol match on line 19
+Value incrimented to "31"
+Pre-build complete
+ 
+Building file: ../src/main.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"src/main.d" -MT"src/main.o" -c -o "src/main.o" "../src/main.cpp"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from ../src/main.cpp:7:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:9: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+         ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:9: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+         ^
+Finished building: ../src/main.cpp
+ 
+Building file: ../src/oculushub_main.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"src/oculushub_main.d" -MT"src/oculushub_main.o" -c -o "src/oculushub_main.o" "../src/oculushub_main.cpp"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\OculusHub\headers/oculushub.hpp:23,
+                 from C:\Users\s.morris\OculusHub\OculusHubMain\headers/oculushub_main.hpp:10,
+                 from ../src/oculushub_main.cpp:1:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:9: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+         ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:9: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+         ^
+Finished building: ../src/oculushub_main.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/OculusHub/src/cpu.c
+Invoking: Cross ARM C Compiler
+arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu11 -MMD -MP -MF"OculusHub_Src/cpu.d" -MT"OculusHub_Src/cpu.o" -c -o "OculusHub_Src/cpu.o" "C:/Users/s.morris/OculusHub/OculusHub/src/cpu.c"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\OculusHub\headers/cpu.h:12,
+                 from C:/Users/s.morris/OculusHub/OculusHub/src/cpu.c:2:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:2: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+  ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:2: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+  ^
+Finished building: C:/Users/s.morris/OculusHub/OculusHub/src/cpu.c
+ 
+Building file: C:/Users/s.morris/OculusHub/OculusHub/src/oculushub.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"OculusHub_Src/oculushub.d" -MT"OculusHub_Src/oculushub.o" -c -o "OculusHub_Src/oculushub.o" "C:/Users/s.morris/OculusHub/OculusHub/src/oculushub.cpp"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\OculusHub\headers/oculushub.hpp:23,
+                 from C:/Users/s.morris/OculusHub/OculusHub/src/oculushub.cpp:1:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:9: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+         ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:9: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+         ^
+Finished building: C:/Users/s.morris/OculusHub/OculusHub/src/oculushub.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/OculusHub/src/startup.c
+Invoking: Cross ARM C Compiler
+arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu11 -MMD -MP -MF"OculusHub_Src/startup.d" -MT"OculusHub_Src/startup.o" -c -o "OculusHub_Src/startup.o" "C:/Users/s.morris/OculusHub/OculusHub/src/startup.c"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\OculusHub\headers/cpu.h:12,
+                 from C:/Users/s.morris/OculusHub/OculusHub/src/startup.c:16:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:2: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+  ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:2: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+  ^
+Finished building: C:/Users/s.morris/OculusHub/OculusHub/src/startup.c
+ 
+Building file: C:/Users/s.morris/OculusHub/BpDevices_K60/src/com.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpDevices_Src/com.d" -MT"BpDevices_Src/com.o" -c -o "BpDevices_Src/com.o" "C:/Users/s.morris/OculusHub/BpDevices_K60/src/com.cpp"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/com.hpp:20,
+                 from C:/Users/s.morris/OculusHub/BpDevices_K60/src/com.cpp:1:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:9: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+         ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:9: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+         ^
+Finished building: C:/Users/s.morris/OculusHub/BpDevices_K60/src/com.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpDevices_K60/src/com_uart.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpDevices_Src/com_uart.d" -MT"BpDevices_Src/com_uart.o" -c -o "BpDevices_Src/com_uart.o" "C:/Users/s.morris/OculusHub/BpDevices_K60/src/com_uart.cpp"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/com.hpp:20,
+                 from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/com_uart.hpp:23,
+                 from C:/Users/s.morris/OculusHub/BpDevices_K60/src/com_uart.cpp:1:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:9: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+         ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:9: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+         ^
+Finished building: C:/Users/s.morris/OculusHub/BpDevices_K60/src/com_uart.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpDevices_K60/src/flash.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpDevices_Src/flash.d" -MT"BpDevices_Src/flash.o" -c -o "BpDevices_Src/flash.o" "C:/Users/s.morris/OculusHub/BpDevices_K60/src/flash.cpp"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/flash.hpp:15,
+                 from C:/Users/s.morris/OculusHub/BpDevices_K60/src/flash.cpp:1:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:9: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+         ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:9: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+         ^
+C:\Users\S5BD5~1.MOR\AppData\Local\Temp\ccWffXhc.s: Assembler messages:
+C:\Users\S5BD5~1.MOR\AppData\Local\Temp\ccWffXhc.s:858: Warning: ignoring changed section attributes for .data
+Finished building: C:/Users/s.morris/OculusHub/BpDevices_K60/src/flash.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpDevices_K60/src/mcg.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpDevices_Src/mcg.d" -MT"BpDevices_Src/mcg.o" -c -o "BpDevices_Src/mcg.o" "C:/Users/s.morris/OculusHub/BpDevices_K60/src/mcg.cpp"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/mcg.hpp:29,
+                 from C:/Users/s.morris/OculusHub/BpDevices_K60/src/mcg.cpp:1:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:9: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+         ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:9: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+         ^
+Finished building: C:/Users/s.morris/OculusHub/BpDevices_K60/src/mcg.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpDevices_K60/src/systick.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpDevices_Src/systick.d" -MT"BpDevices_Src/systick.o" -c -o "BpDevices_Src/systick.o" "C:/Users/s.morris/OculusHub/BpDevices_K60/src/systick.cpp"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/systick.hpp:20,
+                 from C:/Users/s.morris/OculusHub/BpDevices_K60/src/systick.cpp:1:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:9: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+         ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:9: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+         ^
+Finished building: C:/Users/s.morris/OculusHub/BpDevices_K60/src/systick.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpClasses/src/bitutils.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpClasses_Src/bitutils.d" -MT"BpClasses_Src/bitutils.o" -c -o "BpClasses_Src/bitutils.o" "C:/Users/s.morris/OculusHub/BpClasses/src/bitutils.cpp"
+Finished building: C:/Users/s.morris/OculusHub/BpClasses/src/bitutils.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpClasses/src/conversion.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpClasses_Src/conversion.d" -MT"BpClasses_Src/conversion.o" -c -o "BpClasses_Src/conversion.o" "C:/Users/s.morris/OculusHub/BpClasses/src/conversion.cpp"
+Finished building: C:/Users/s.morris/OculusHub/BpClasses/src/conversion.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpClasses/src/crc16.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpClasses_Src/crc16.d" -MT"BpClasses_Src/crc16.o" -c -o "BpClasses_Src/crc16.o" "C:/Users/s.morris/OculusHub/BpClasses/src/crc16.cpp"
+Finished building: C:/Users/s.morris/OculusHub/BpClasses/src/crc16.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpClasses/src/crc32.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpClasses_Src/crc32.d" -MT"BpClasses_Src/crc32.o" -c -o "BpClasses_Src/crc32.o" "C:/Users/s.morris/OculusHub/BpClasses/src/crc32.cpp"
+Finished building: C:/Users/s.morris/OculusHub/BpClasses/src/crc32.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpClasses/src/datetime.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpClasses_Src/datetime.d" -MT"BpClasses_Src/datetime.o" -c -o "BpClasses_Src/datetime.o" "C:/Users/s.morris/OculusHub/BpClasses/src/datetime.cpp"
+Finished building: C:/Users/s.morris/OculusHub/BpClasses/src/datetime.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpClasses/src/macros.c
+Invoking: Cross ARM C Compiler
+arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu11 -MMD -MP -MF"BpClasses_Src/macros.d" -MT"BpClasses_Src/macros.o" -c -o "BpClasses_Src/macros.o" "C:/Users/s.morris/OculusHub/BpClasses/src/macros.c"
+Finished building: C:/Users/s.morris/OculusHub/BpClasses/src/macros.c
+ 
+Building file: C:/Users/s.morris/OculusHub/BpClasses/src/maths.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpClasses_Src/maths.d" -MT"BpClasses_Src/maths.o" -c -o "BpClasses_Src/maths.o" "C:/Users/s.morris/OculusHub/BpClasses/src/maths.cpp"
+Finished building: C:/Users/s.morris/OculusHub/BpClasses/src/maths.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpClasses/src/pid.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpClasses_Src/pid.d" -MT"BpClasses_Src/pid.o" -c -o "BpClasses_Src/pid.o" "C:/Users/s.morris/OculusHub/BpClasses/src/pid.cpp"
+Finished building: C:/Users/s.morris/OculusHub/BpClasses/src/pid.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpClasses/src/serialize.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpClasses_Src/serialize.d" -MT"BpClasses_Src/serialize.o" -c -o "BpClasses_Src/serialize.o" "C:/Users/s.morris/OculusHub/BpClasses/src/serialize.cpp"
+Finished building: C:/Users/s.morris/OculusHub/BpClasses/src/serialize.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpClasses/src/serializebuffer.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpClasses_Src/serializebuffer.d" -MT"BpClasses_Src/serializebuffer.o" -c -o "BpClasses_Src/serializebuffer.o" "C:/Users/s.morris/OculusHub/BpClasses/src/serializebuffer.cpp"
+Finished building: C:/Users/s.morris/OculusHub/BpClasses/src/serializebuffer.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpClasses/src/sha1.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpClasses_Src/sha1.d" -MT"BpClasses_Src/sha1.o" -c -o "BpClasses_Src/sha1.o" "C:/Users/s.morris/OculusHub/BpClasses/src/sha1.cpp"
+Finished building: C:/Users/s.morris/OculusHub/BpClasses/src/sha1.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpClasses/src/tea.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpClasses_Src/tea.d" -MT"BpClasses_Src/tea.o" -c -o "BpClasses_Src/tea.o" "C:/Users/s.morris/OculusHub/BpClasses/src/tea.cpp"
+Finished building: C:/Users/s.morris/OculusHub/BpClasses/src/tea.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpApplication/src/app.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpApplication_Src/app.d" -MT"BpApplication_Src/app.o" -c -o "BpApplication_Src/app.o" "C:/Users/s.morris/OculusHub/BpApplication/src/app.cpp"
+Finished building: C:/Users/s.morris/OculusHub/BpApplication/src/app.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpApplication/src/flash_data.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpApplication_Src/flash_data.d" -MT"BpApplication_Src/flash_data.o" -c -o "BpApplication_Src/flash_data.o" "C:/Users/s.morris/OculusHub/BpApplication/src/flash_data.cpp"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/flash.hpp:15,
+                 from C:\Users\s.morris\OculusHub\BpApplication\headers/flash_data.hpp:20,
+                 from C:/Users/s.morris/OculusHub/BpApplication/src/flash_data.cpp:1:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:9: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+         ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:9: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+         ^
+Finished building: C:/Users/s.morris/OculusHub/BpApplication/src/flash_data.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpApplication/src/flash_prog.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpApplication_Src/flash_prog.d" -MT"BpApplication_Src/flash_prog.o" -c -o "BpApplication_Src/flash_prog.o" "C:/Users/s.morris/OculusHub/BpApplication/src/flash_prog.cpp"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/flash.hpp:15,
+                 from C:\Users\s.morris\OculusHub\BpApplication\headers/flash_prog.hpp:24,
+                 from C:/Users/s.morris/OculusHub/BpApplication/src/flash_prog.cpp:1:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:9: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+         ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:9: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+         ^
+Finished building: C:/Users/s.morris/OculusHub/BpApplication/src/flash_prog.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpApplication/src/service.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpApplication_Src/service.d" -MT"BpApplication_Src/service.o" -c -o "BpApplication_Src/service.o" "C:/Users/s.morris/OculusHub/BpApplication/src/service.cpp"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\BpApplication\headers/ticktimer.hpp:13,
+                 from C:\Users\s.morris\OculusHub\BpApplication\headers/service.hpp:15,
+                 from C:/Users/s.morris/OculusHub/BpApplication/src/service.cpp:1:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:9: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+         ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:9: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+         ^
+Finished building: C:/Users/s.morris/OculusHub/BpApplication/src/service.cpp
+ 
+Building file: C:/Users/s.morris/OculusHub/BpApplication/src/ticktimer.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Users\s.morris\OculusHub\BpClasses\headers" -I"C:\Users\s.morris\OculusHub\BpApplication\headers" -I"C:\Users\s.morris\OculusHub\BpDevices_K60\headers" -I"C:\Users\s.morris\OculusHub\OculusHub\headers" -I"C:\Users\s.morris\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"BpApplication_Src/ticktimer.d" -MT"BpApplication_Src/ticktimer.o" -c -o "BpApplication_Src/ticktimer.o" "C:/Users/s.morris/OculusHub/BpApplication/src/ticktimer.cpp"
+In file included from C:\Users\s.morris\OculusHub\BpDevices_K60\headers/processor.h:18:0,
+                 from C:\Users\s.morris\OculusHub\BpApplication\headers/ticktimer.hpp:13,
+                 from C:/Users/s.morris/OculusHub/BpApplication/src/ticktimer.cpp:1:
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:37:9: note: #pragma message: "Compiling DEBUG firmware"
+  PRAGMA_INFO("Compiling DEBUG firmware")
+         ^
+C:\Users\s.morris\OculusHub\OculusHub\headers/platform.h:43:9: note: #pragma message: "Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU"
+  PRAGMA_INFO("Compiling for REV 1 platform (v1 PCB with 50MHz external oscillator and 120MHz MCU")
+         ^
+Finished building: C:/Users/s.morris/OculusHub/BpApplication/src/ticktimer.cpp
+ 
+Building target: OculusHubMainDebug.elf
+Invoking: Cross ARM C++ Linker
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -T "C:\Users\s.morris\OculusHub\OculusHubMain\linker_main.ld" -Xlinker --gc-sections -Wl,-Map,"OculusHubMainDebug.map" -specs=nano.specs -specs=nosys.specs -o "OculusHubMainDebug.elf"  ./src/main.o ./src/oculushub_main.o  ./OculusHub_Src/cpu.o ./OculusHub_Src/oculushub.o ./OculusHub_Src/startup.o  ./BpDevices_Src/com.o ./BpDevices_Src/com_uart.o ./BpDevices_Src/flash.o ./BpDevices_Src/mcg.o ./BpDevices_Src/systick.o  ./BpClasses_Src/bitutils.o ./BpClasses_Src/conversion.o ./BpClasses_Src/crc16.o ./BpClasses_Src/crc32.o ./BpClasses_Src/datetime.o ./BpClasses_Src/macros.o ./BpClasses_Src/maths.o ./BpClasses_Src/pid.o ./BpClasses_Src/serialize.o ./BpClasses_Src/serializebuffer.o ./BpClasses_Src/sha1.o ./BpClasses_Src/tea.o  ./BpApplication_Src/app.o ./BpApplication_Src/flash_data.o ./BpApplication_Src/flash_prog.o ./BpApplication_Src/service.o ./BpApplication_Src/ticktimer.o   
+Finished building target: OculusHubMainDebug.elf
+ 
+make --no-print-directory post-build
+Perform Post-Build Actions (Compile FWX firmware)
+C:/Users/s.morris/OculusHub/OculusHubMain/postbuild.bat DEBUG "C:/Users/s.morris/OculusHub/OculusHubMain" "OculusHubMainDebug"
+
+Performing post-build commands at 17:49:59.82, 29/03/2017...
+Current Directory="C:\Users\s.morris\OculusHub\OculusHubMain\Debug"
+
+Post-build Mode "DEBUG"
+Post-build Project Directory "C:\Users\s.morris\OculusHub\OculusHubMain"	
+Firmware Path="C:\Users\s.morris\OculusHub\OculusHubMain\debug"
+Firmware Name="OculusHubMainDebug"
+
+Post-Build: Cross ARM GNU Create Flash Image (Convert ELF to BIN and Intel-Hex)	
+Finished building
+
+Post-Build: Firmware FWX Formatter	
+Finished building
+
+Post-build: Complete	
+
+ 
+Invoking: Cross ARM GNU Create Listing
+arm-none-eabi-objdump --source --all-headers --demangle --line-numbers --wide "OculusHubMainDebug.elf" > "OculusHubMainDebug.lst"
+Finished building: OculusHubMainDebug.lst
+ 
+Invoking: Cross ARM GNU Print Size
+arm-none-eabi-size --format=sysv --totals "OculusHubMainDebug.elf"
+OculusHubMainDebug.elf  :
+section               size        addr
+.interrupts            488       65536
+.cfmprotect             16       66560
+.text                43476       66576
+.ARM                     8      110052
+.init_array              4      110060
+.fini_array              4      110064
+.data                  160   536805376
+.bss                   684   536805536
+.romp                   36   536806220
+._user_heap_stack    45056   536806256
+.ARM.attributes         48           0
+.debug_info         191539           0
+.debug_abbrev        22294           0
+.debug_aranges        1552           0
+.debug_ranges         1728           0
+.debug_macro         90559           0
+.debug_line          40267           0
+.debug_str          351899           0
+.comment               112           0
+.debug_frame         13380           0
+.debug_loc           17967           0
+.stab                  204           0
+.stabstr               441           0
+Total               821922
+
+
+Finished building: OculusHubMainDebug.siz
+ 
+
+17:50:00 Build Finished (took 9s.126ms)
+

@@ -1,0 +1,119 @@
+#include "ftm_pwm.hpp"
+
+//#include "com.hpp"
+
+//==============================================================================
+//Implementation...
+//==============================================================================
+//CFtmPwm
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor for the class
+@param[in]	ftmId		The index of the flex timer module to use
+@param[in]	chan		The channel to use for the PWM output
+*/
+CFtmPwm::CFtmPwm(uint8 ftmId, uint8 chan)
+	: base(ftmId)
+{
+	//Setup the default values
+	this->SetChannel(chan);
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the class
+*/
+CFtmPwm::~CFtmPwm()
+{	
+	//Stop the FTM and disabled interrupts and turn off hardware	
+	this->SetEnabled(false);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that can be overridden by inheriting classes to implement additional
+functionality as the Timer is started, but before the clock actually starts.
+*/
+void CFtmPwm::DoStart()
+{
+	//Clear the combine and quadrature decoder registers
+	_ftm->COMBINE = 0;
+	_ftm->QDCTRL = 0;
+	
+	//Set for up counting only (Edge PWM)
+	CLR_BITS(_ftm->SC, FTM_SC_CPWMS_MASK);
+	
+	//Configure the FTM channel (this turns the PWM output logically on)
+	//Set for "Edge Aligned PWM (EPWM), High-true pulses"
+	uint32 cnsc = 0; //_ftm->CONTROLS[_chan].CnSC;
+	CLR_BITS(cnsc, FTM_CnSC_ELSA_MASK | FTM_CnSC_ELSB_MASK | FTM_CnSC_MSA_MASK | FTM_CnSC_MSB_MASK);
+	SET_BITS(cnsc, FTM_CnSC_ELSB_MASK | FTM_CnSC_MSB_MASK);
+	_ftm->CONTROLS[_chan].CnSC = cnsc;
+	
+	//Initialise the state of the output channel
+	_ftm->OUTINIT = BIT(_chan);
+	SET_BITS(_ftm->MODE, FTM_MODE_INIT_MASK);
+
+	//Unmask the FTM drive outputs to the transmitter
+	_ftm->OUTMASK = (uint8)~BIT(_chan);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that can be overridden by inheriting classes to implement additional
+functionality when the timer is stopped (called after the clock is stopped,
+regardless of weather the hardware is enabled, so the _enabled flag should
+be checked before altering _ftm register values).
+*/
+void CFtmPwm::DoStop()
+{
+	if(_enabled) {
+		//Mask the FTM drive outputs to the transmitter (force to inactive state)
+		_ftm->OUTMASK = 0xFF;
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the channel output the PWM will transmit on
+*/
+void CFtmPwm::SetChannel(uint8 chan)
+{
+	if(!_started) {
+		_chan = chan & 0x7;
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is used to set the FTM CNT value at which the PWM output will be
+turned 'ON'.
+NB: Care should be taken to ensure this value does not exceed the FTM modulo
+value, otherwise the switching action will not occur, and the FTM CNT register
+will never pass the threshold.
+*/
+void CFtmPwm::SetPwmCnt(uint16 cnt)
+{
+	if(_enabled) {
+		//Load the new PWM values
+		_ftm->CONTROLS[_chan].CnV = FTM_CnV_VAL(cnt);
+
+		//COM_PRINT("CnV[%u]=%u\r\n", _chan, FTM_CnV_VAL(cnt));
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the PWM duty cycle as a percentage of the current modulo value
+of the FTM timer. 
+@param percent	The percentage between 0.0 and 1.0 to set the PWM to.
+*/		
+void CFtmPwm::SetPwmPct(float percent)
+{
+	//Compute the front and back edge counter values...
+	float modval = (float)_modulo + 1;
+	float cntEdge = modval * percent;
+	if(cntEdge < 0.0)
+		cntEdge = 0.0;
+	else if(cntEdge > modval)
+		cntEdge = modval;
+	
+	//Load the new PWM cycle
+	this->SetPwmCnt((uint16)cntEdge);
+}
+		
+//==============================================================================

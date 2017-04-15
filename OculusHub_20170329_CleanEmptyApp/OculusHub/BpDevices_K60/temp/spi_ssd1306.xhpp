@@ -1,0 +1,85 @@
+/*==============================================================================
+C++ Module that provides the definitions and implementation for a wrapper class
+to provide management and access functions for an SPI-based Solomon Systech SSD1306 LCD
+display controller (such as that used on the SRS Fusion OLED display)
+
+10/09/2016 - Created v1.0 of file
+==============================================================================*/
+//Prevent multiple inclusions of this file
+#ifndef SPI_SSD1306_HPP
+#define SPI_SSD1306_HPP
+
+//Include common type definitions and macros
+#include "common.h"
+#include "spi.hpp"
+#include "systick.hpp"
+
+//==============================================================================
+//Class Definition...
+//==============================================================================
+//Check IO definitions are implemented
+#ifndef SPI_SSD1306_IO_MODE_CMD
+	PRAGMA_WARNING("The symbol SPI_SSD1306_IO_MODE_CMD must be defined with the statement to clear the D/C# signal line")
+	#define SPI_SSD1306_IO_MODE_CMD 	NOP
+#endif
+
+#ifndef SPI_SSD1306_IO_MODE_DATA
+	PRAGMA_WARNING("The symbol SPI_SSD1306_IO_MODE_DATA must be defined with the statement to set the D/C# signal line")
+	#define SPI_SSD1306_IO_MODE_DATA 	NOP
+#endif
+
+#define SPI_SSD1306_WIDTH			128			/*!< Width of displays driven by the SSD1306 */
+#define SPI_SSD1306_HEIGHT			64			/*!< Height of displays driven by the SSD1306 */
+
+//------------------------------------------------------------------------------
+//Pre-declare the class
+class CSpiSSD1306;
+
+/*! Define a pointer for the object */
+typedef CSpiSSD1306* PSpiSSD1306;
+
+/*!
+Class that implements the base functionality for an SPI SSD1306 lcd display controller device
+*/
+class CSpiSSD1306 : public CSpiDevice {
+	private:
+		typedef CSpiDevice base;	/*!< Define simplified reference to the parent class */
+
+		uint8 _brightness;
+
+	public:
+		//Construction and Disposal
+		CSpiSSD1306(PSpiPort spi, uint8 chan);	// : base(spi, chan, ctar);
+		~CSpiSSD1306();
+
+		//Methods
+		void Clear(uint8 value = 0x00);
+		void Initialise(bool extVcc);
+
+		void SendStartColumn(uint8 value);
+		void SendAddressingMode(uint8 value);
+		void SendColumnAddress(uint8 start, uint8 end);
+		void SendPageAddress(uint8 start, uint8 end);
+		void SendStartLine(uint8 value);
+		void SendContrastControl(uint8 value);
+		void SendChargePump(bool value);
+		void SendSegmentRemap(bool value);
+		void SendEntireDisplay(bool value);
+		void SendInverseDisplay(bool value);
+		void SendMultiplexRatio(uint8 value);
+		void SendDisplayOn(bool value);
+		void SendStartPage(uint8 value);
+		void SendCommonRemap(bool value);
+		void SendDisplayOffset(uint8 value);
+		void SendDisplayClock(uint8 divider, uint8 frequency);
+		void SendPrechargePeriod(uint8 phase1, uint8 phase2);
+		void SendCommonConfig(uint8 value);
+		void SendVCOMH(uint8 value);
+		void SendNOP();
+
+		bool WriteCommand(uint8 cmd);
+		bool WriteData(uint8 data);
+};
+
+//==============================================================================
+#endif

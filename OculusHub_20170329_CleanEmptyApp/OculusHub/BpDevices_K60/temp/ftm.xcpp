@@ -1,0 +1,425 @@
+#include "ftm.hpp"
+
+//==============================================================================
+//Implementation...
+//==============================================================================
+//CFtm
+//==============================================================================
+//Initialise static memory of an array of pointers that holds the FTM object
+//bound to each port
+PFtm CFtm::Ftm[FTM_PERIPHERALS] = { NULL };		
+
+/*!-----------------------------------------------------------------------------
+Constructor for the class
+@param[in]	ftmId	The index of the flex timer module to use
+*/
+CFtm::CFtm(uint8 ftmId)	
+{			
+	//Get the pointer to the FTM hardware to use
+	_id = ftmId;
+	switch(_id) {
+		case 0 : { _ftm = FTM0; break; }
+		case 1 : { _ftm = FTM1; break; }
+		case 2 : { _ftm = FTM2; break; }
+		case 3 : { _ftm = FTM3; break; }
+		default : { _ftm = NULL; break; }
+	}	
+	
+	//Ensure the enabled and started flags are initialised here
+	_enabled = false;
+	_started = false;
+	
+	//Initialise variables
+	_cntInit = 0;
+	_clkSource = FTM_CLKSRC_NONE;
+	_clkPrescalar = FTM_CLKPS_DIV1;	
+	_isrEnabled = false;
+	_modulo = 0;
+	
+	//Ensure the FTM is turned off and shut down
+	this->SetEnabled(false);
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the class
+*/
+CFtm::~CFtm()
+{	
+	//Stop the FTM and disabled interrupts and turn off hardware	
+	this->SetEnabled(false);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is called when the FTM IRQ is asserted. Inheriting classes
+can implement their own custom functions here
+*/
+void CFtm::DoISR()
+{		
+	//Ensure the Timer Overflow flag is set
+	CLR_BIT(_ftm->SC, FTM_SC_TOF_SHIFT);	
+		
+	//Raise the IRQ callback		
+	OnISR.Call();
+}
+
+/*!-----------------------------------------------------------------------------
+Function that can be overridden by inheriting classes to implement additional
+functionality as the Timer is started, but before the clock actually starts.
+*/
+void CFtm::DoStart()
+{
+}
+
+/*!-----------------------------------------------------------------------------
+Function that can be overridden by inheriting classes to implement additional
+functionality when the timer is stopped (called after the clock is stopped,
+regardless of weather the hardware is enabled, so the _enabled flag should
+be checked before altering _ftm register values).
+*/
+void CFtm::DoStop()
+{
+}
+		
+/*!-----------------------------------------------------------------------------
+Function that calculates the actual frequency the FTM module is using, based on
+how the quantised value of the Modulo register related to the set clock frequency
+and prescalar.
+@result	The timer frequency in Hertz
+*/
+uint32 CFtm::GetFrequency()
+{
+	//Counter ACTUAL_FREQUENCY = BUS_CLK / ((MODULO - CNTIN + 1) * PRESCALAR)	
+	//(See Kinetis user guide Section 42.4.3.1 "FTM Up Counting" (P1148) for the formula this is derived from)
+	return CMcg::ClkIntBusFreq / ((_modulo - _cntInit + 1) << ((uint8)_clkPrescalar));
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns a pointer to the FTM hardware register struct
+*/
+FTM_Type* CFtm::GetRegisters()
+{
+	if(_enabled)
+		return _ftm;
+	else
+		return NULL;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns if the FTM hardware clock is enabled, and register
+access is allowed.
+*/
+bool CFtm::IsEnabled()
+{
+	return _enabled;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns if the FTM has been started and is running.
+*/
+bool CFtm::IsStarted()
+{
+	return _started;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the clock prescalar value.
+This is only applied when the timer is started.
+*/
+void CFtm::SetClkPrescalar(EFtmClkPrescalar value)
+{	
+	if(!_started)
+		_clkPrescalar = value;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the clock source.
+This is only applied when the timer is started.
+*/
+void CFtm::SetClkSource(EFtmClkSource value) 
+{
+	if(!_started)
+		_clkSource = value;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that enables or disables the hardware clock to the FTM peripheral.
+When disabled, the FTM is disconnected from the IRQ, potentially allowing another
+FTM class to be connected and enabled. However care should be taken as to how
+the FTM registers are shared and initialised prior to starting, otherwise an
+undefined behaviour will occur. 
+@param[in]	state	True to enable the FTM module
+@result				True if the FTM was successfully enabled
+*/
+bool CFtm::SetEnabled(bool state)
+{	
+	if(_ftm) {
+		if(state && (CFtm::Ftm[_id] == NULL)) {						
+			//Store this object instance into the global array of FTM object
+			//so the low-level IRQ handler can access it		
+			CFtm::Ftm[_id] = this;
+				
+			//Turn on the clock to the module
+			switch(_id) {
+				case 0 : { SET_BIT(SIM->SCGC6, SIM_SCGC6_FTM0_SHIFT); _enabled = true; break; };
+				case 1 : { SET_BIT(SIM->SCGC6, SIM_SCGC6_FTM1_SHIFT); _enabled = true; break; };
+				case 2 : { SET_BIT(SIM->SCGC3, SIM_SCGC3_FTM2_SHIFT); _enabled = true; break; };
+				case 3 : { SET_BIT(SIM->SCGC3, SIM_SCGC3_FTM3_SHIFT); _enabled = true; break; };
+				default : { _enabled = false; break; }
+			}			
+		}
+		else {
+			//Stop the timer
+			this->Stop();
+			
+			//Indicate the hardware is now disabled
+			_enabled = false;
+			
+			//Disable the clock to the FTM module			
+			switch(_id) {
+				case 0 : { CLR_BIT(SIM->SCGC6, SIM_SCGC6_FTM0_SHIFT); break; };
+				case 1 : { CLR_BIT(SIM->SCGC6, SIM_SCGC6_FTM1_SHIFT); break; };
+				case 2 : { CLR_BIT(SIM->SCGC3, SIM_SCGC3_FTM2_SHIFT); break; };
+				case 3 : { CLR_BIT(SIM->SCGC3, SIM_SCGC3_FTM3_SHIFT); break; };		
+			}
+						
+			//Disconnect the object from the IRQ handler		
+			CFtm::Ftm[_id] = NULL;	
+		}
+	}
+	else {
+		_enabled = false;
+	}
+	
+	return _enabled;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the frequency of the counter overflow (Modulo) value in Hertz,
+and auto-calculates the lowest clock prescalar in order to acheive this.
+This value will be applied with the timer is started, unless the timer is enabled
+in which case it will be applied immediatly.
+@param	value is the desired timer frequency in Hertz.
+@returns true if the computed timer modulo is in a valid range and the frequency can be obtained
+*/
+bool CFtm::SetFrequencyAuto(uint32 value)
+{
+	if(!_started) {
+		//Loop through pre-scalars until we get the first that achieves the frequency
+		for(uint8 ps = (uint8)FTM_CLKPS_DIV1; ps <= (uint8)FTM_CLKPS_DIV128; ps++) {
+			this->SetClkPrescalar((EFtmClkPrescalar)ps);
+			bool success = this->SetFrequency(value);
+			if(success)
+				return true;
+		}
+	}
+
+	return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the frequency of the counter overflow (Modulo) value in Hertz.
+This value will be applied with the timer is started, unless the timer is enabled
+in which case it will be applied immediatly.
+@param	value is the desired timer frequency in Hertz. The actual frequency may differ slightly due to operating parameters - use GetFrequency to compute this.
+@returns true if the computed timer modulo is in a valid range and the frequency can be obtained
+*/
+bool CFtm::SetFrequency(uint32 value)
+{
+	//Counter MODULO = (BUS_CLK / PRESCALAR / REQ_FREQUENCY) - 1 + CNTIN, so therefore 
+	//Counter MODULO = (BUS_CLK / (REQ_FREQUENCY * PRESCALAR)) - 1 + CNTIN;	
+	//(See Kinetis user guide Section"FTM Up Counting" for the formula this is derived from)
+	uint32 modulo = (CMcg::ClkIntBusFreq / (value << ((uint8)_clkPrescalar))) - 1 + _cntInit;
+	if(modulo > 0xFFFF) {
+		this->SetModulo(0xFFFF);
+		return false;
+	}
+	else {
+		this->SetModulo((uint16)modulo);
+		return true;
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that enables or disables the FTM Interrupt Requests when the timer overflows.
+If the timer is started, the changes are applied immediatly, otherwise the are applied
+when the timer is started.
+@param	state	True fo fale to enable or disable IRQ's
+*/
+void CFtm::SetIsrEnabled(bool state)
+{
+	_isrEnabled = state;
+	
+	if(_started) {				
+		if(_isrEnabled) {
+			//Enable IRQ's and clear any pending interrupt
+			CLR_BITS(_ftm->SC, FTM_SC_TOF_MASK);
+			SET_BITS(_ftm->SC, FTM_SC_TOIE_MASK);			
+		}
+		else {
+			//Disable IRQ's and clear any pending interrupt		
+			CLR_BITS(_ftm->SC, FTM_SC_TOF_MASK | FTM_SC_TOIE_MASK);	
+		}		
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that directly sets the FTM modulo register, controlling the overflow period.
+This value will be applied with the timer is started, unless the timer is enabled
+in which case it will be applied immediately.
+The actual frequency obtained may be queried by the GetFrequency() function.
+@param	value	The desired timer modulo value, where the counter raises an interrupt and wraps back to 0 (or counts down).
+*/
+void CFtm::SetModulo(uint16 value)
+{	
+	_modulo = value;
+	
+	//If enabled, apply the modulo change immediately
+	if(_started) {
+		_ftm->MOD = FTM_MOD_MOD(_modulo);
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that enables or disables the IRQ to an FTM peripheral
+@param[in]	state	True to enable the FTM module IRQ
+*/
+void CFtm::SetNvicEnabled(bool state)
+{
+	if(_enabled) {
+		if(state) {
+			//Enable the IRQ
+			switch(_id) {
+				case 0 : { NVIC_EnableIRQ(FTM0_IRQn); break; };
+				case 1 : { NVIC_EnableIRQ(FTM1_IRQn); break; };
+				case 2 : { NVIC_EnableIRQ(FTM2_IRQn); break; };
+				case 3 : { NVIC_EnableIRQ(FTM3_IRQn); break; };		
+			}	
+		}
+		else {
+			//Disable the IRQ
+			switch(_id) {
+				case 0 : { NVIC_DisableIRQ(FTM0_IRQn); break; };
+				case 1 : { NVIC_DisableIRQ(FTM1_IRQn); break; };
+				case 2 : { NVIC_DisableIRQ(FTM2_IRQn); break; };
+				case 3 : { NVIC_DisableIRQ(FTM3_IRQn); break; };		
+			}	
+		}
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CFtm::Start() 
+{
+	if(_enabled) {	
+		//Ensure interrupts are turned off before we attempt to configure the FTM
+		this->SetNvicEnabled(false);
+	
+		//Indicate the timer is started and running (this allows hardware values to be applied)
+		_started = true;
+	
+		//Turn off FTM write protection and allow access to all registers and SC bits
+		SET_BITS(_ftm->MODE, FTM_MODE_WPDIS_MASK);
+		//SET_BITS(_ftm->MODE, FTM_MODE_FTMEN_MASK);
+			
+		//Reset the FTM counter to initial value, before FTM clock is started
+		_ftm->CNTIN = _cntInit;
+		_ftm->CNT = 0;				//(Write ANY value to CNT to load with CNTIN)
+
+		//Setup the FTM register states for basic up-counting timing
+		this->SetIsrEnabled(_isrEnabled);
+		this->SetModulo(_modulo);		
+		
+		//Set generation of the trigger when the FTM counter is equal to the CNTIN register
+		//Modules like the ADC will require this is set to hardware Triggering!
+		_ftm->EXTTRIG = FTM_EXTTRIG_INITTRIGEN_MASK;
+	
+		//Call the DoStart method to allow inheriting classes to further configure hardware before it is started
+		this->DoStart();
+		
+		//Enable NVIC interrupts
+		this->SetNvicEnabled(true);
+		
+		//Clear any pending interrupt request and load the new clock source bits, then start the clock
+		uint32 ftmSC = _ftm->SC;
+		CLR_BITS(ftmSC, FTM_SC_TOF_MASK | FTM_SC_CLKS_MASK | FTM_SC_PS_MASK);	
+		SET_BITS(ftmSC, FTM_SC_PS((uint8)_clkPrescalar) | FTM_SC_CLKS((uint8)_clkSource));
+		_ftm->SC = ftmSC;		
+	}	
+	
+	//Return if the timer was started
+	return _started;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CFtm::Stop()
+{	
+	//Disable NVIC interrupts
+	this->SetNvicEnabled(false);  
+	
+	//Indicate the timer is stopped
+	_started = false;
+	
+	if(_enabled) {
+		//Turn off FTM write protection and allow access to all registers and SC bits
+		SET_BITS(_ftm->MODE, FTM_MODE_WPDIS_MASK);
+		
+		//Read the SC register, then write 0 to the TOF flag (to clear the IRQ request) and
+		//set the ClkSrc to disabled - this will drive any PWM/TMR outputs to High-Z state!	
+		CLR_BITS(_ftm->SC, FTM_SC_TOF_MASK | FTM_SC_TOIE_MASK | FTM_SC_CLKS_MASK | FTM_SC_PS_MASK);		
+	}	
+	
+	//Call the DoStop method to allow inheriting classes to perform additional stop actions
+	this->DoStop();
+}
+
+//==============================================================================
+//FTM Interrupt Handlers
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Function called from the Interrupt Vector Table.
+If an FTM class instance has been created for this FTM, then call its service function
+*/
+#if FTM0_CONNECT_IRQ
+void ISR_FTM0(void) {
+	if(CFtm::Ftm[0]) {				
+		CFtm::Ftm[0]->DoISR();
+	}
+}
+#endif
+
+/*!-----------------------------------------------------------------------------
+Function called from the Interrupt Vector Table.
+If an FTM class instance has been created for this FTM, then call its service function
+*/
+#if FTM1_CONNECT_IRQ
+void ISR_FTM1(void) {
+	if(CFtm::Ftm[1])
+		CFtm::Ftm[1]->DoISR();
+}
+#endif
+
+/*!-----------------------------------------------------------------------------
+Function called from the Interrupt Vector Table.
+If an FTM class instance has been created for this FTM, then call its service function
+*/
+#if FTM2_CONNECT_IRQ
+void ISR_FTM2(void) {
+	if(CFtm::Ftm[2]) 
+		CFtm::Ftm[2]->DoISR();
+}
+#endif
+
+/*!-----------------------------------------------------------------------------
+Function called from the Interrupt Vector Table.
+If an FTM class instance has been created for this FTM, then call its service function
+*/
+#if FTM3_CONNECT_IRQ
+void ISR_FTM3(void) {
+	if(CFtm::Ftm[3]) 
+		CFtm::Ftm[3]->DoISR();
+}
+#endif
+
+//==============================================================================

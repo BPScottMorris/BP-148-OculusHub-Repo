@@ -1,0 +1,170 @@
+/*==============================================================================
+Module that includes the Interrupt Vector Table and service routes for the
+MK22FX512AVLH12 Kinetis processor.
+==============================================================================*/
+//Prevent Multiple Inclusions of the File
+#ifndef CPU_H
+#define CPU_H
+
+//------------------------------------------------------------------------------
+//Include common type definitions and macros
+#include "common.h"
+#include "processor.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+//==============================================================================
+//Definitions
+//==============================================================================
+// Interrupt vector table type definition
+typedef void (*const TIsrFunc)(void);
+
+//ISR Vector Table Definition
+typedef struct {
+	void* __ptr;
+	TIsrFunc __fun[0x61];
+} TIsrVectorTable;
+
+//------------------------------------------------------------------------------
+//Global variables
+const TIsrVectorTable __vect_table;		//Create a symbol relating to the external ISR Vector Table (referenced in linker script)
+
+extern volatile uint8 SR_reg;			//Current FAULTMASK register
+extern volatile uint8 SR_lock;
+
+//==============================================================================
+//Function Prototypes...
+//==============================================================================
+//Default ISR Handler Prototype
+void ISR_Default();
+
+//ISR Vector Table Prototypes
+extern void ISR_NMI();
+extern void ISR_Hard_Fault();
+extern void ISR_Mem_Manage_Fault();
+extern void ISR_Bus_Fault();
+extern void ISR_Usage_Fault();
+extern void ISR_Reserved7();
+extern void ISR_Reserved8();
+extern void ISR_Reserved9();
+extern void ISR_Reserved10();
+extern void ISR_SVCall();
+extern void ISR_DebugMonitor();
+extern void ISR_Reserved13();
+extern void ISR_PendableSrvReq();
+extern void ISR_SysTick();
+extern void ISR_DMA0();
+extern void ISR_DMA1();
+extern void ISR_DMA2();
+extern void ISR_DMA3();
+extern void ISR_DMA4();
+extern void ISR_DMA5();
+extern void ISR_DMA6();
+extern void ISR_DMA7();
+extern void ISR_DMA8();
+extern void ISR_DMA9();
+extern void ISR_DMA10();
+extern void ISR_DMA11();
+extern void ISR_DMA12();
+extern void ISR_DMA13();
+extern void ISR_DMA14();
+extern void ISR_DMA15();
+extern void ISR_DMA_Error();
+extern void ISR_MCM();
+extern void ISR_FTFE();
+extern void ISR_Read_Collision();
+extern void ISR_LVD_LVW();
+extern void ISR_LLWU();
+extern void ISR_WDOG_EWM();
+extern void ISR_RNGB();
+extern void ISR_I2C0();
+extern void ISR_I2C1();
+extern void ISR_SPI0();
+extern void ISR_SPI1();
+extern void ISR_SPI2();
+extern void ISR_CAN0_ORed_Message_buffer();
+extern void ISR_CAN0_Bus_Off();
+extern void ISR_CAN0_Error();
+extern void ISR_CAN0_Tx_Warning();
+extern void ISR_CAN0_Rx_Warning();
+extern void ISR_CAN0_Wake_Up();
+extern void ISR_I2S0_Tx();
+extern void ISR_I2S0_Rx();
+extern void ISR_CAN1_ORed_Message_buffer();
+extern void ISR_CAN1_Bus_Off();
+extern void ISR_CAN1_Error();
+extern void ISR_CAN1_Tx_Warning();
+extern void ISR_CAN1_Rx_Warning();
+extern void ISR_CAN1_Wake_Up();
+extern void ISR_Reserved59();
+extern void ISR_UART0_LON();
+extern void ISR_UART0_RX_TX();
+extern void ISR_UART0_ERR();
+extern void ISR_UART1_RX_TX();
+extern void ISR_UART1_ERR();
+extern void ISR_UART2_RX_TX();
+extern void ISR_UART2_ERR();
+extern void ISR_UART3_RX_TX();
+extern void ISR_UART3_ERR();
+extern void ISR_UART4_RX_TX();
+extern void ISR_UART4_ERR();
+extern void ISR_UART5_RX_TX();
+extern void ISR_UART5_ERR();
+extern void ISR_ADC0();
+extern void ISR_ADC1();
+extern void ISR_CMP0();
+extern void ISR_CMP1();
+extern void ISR_CMP2();
+extern void ISR_FTM0();
+extern void ISR_FTM1();
+extern void ISR_FTM2();
+extern void ISR_CMT();
+extern void ISR_RTC();
+extern void ISR_RTC_Seconds();
+extern void ISR_PIT0();
+extern void ISR_PIT1();
+extern void ISR_PIT2();
+extern void ISR_PIT3();
+extern void ISR_PDB0();
+extern void ISR_USB0();
+extern void ISR_USBDCD();
+extern void ISR_ENET_1588_Timer();
+extern void ISR_ENET_Transmit();
+extern void ISR_ENET_Receive();
+extern void ISR_ENET_Error();
+extern void ISR_Reserved95();
+extern void ISR_SDHC();
+extern void ISR_DAC0();
+extern void ISR_DAC1();
+extern void ISR_TSI0();
+extern void ISR_MCG();
+extern void ISR_LPTMR0();
+extern void ISR_Reserved102();
+extern void ISR_PORTA();
+extern void ISR_PORTB();
+extern void ISR_PORTC();
+extern void ISR_PORTD();
+extern void ISR_PORTE();
+extern void ISR_PORTF();
+extern void ISR_Reserved109();
+extern void ISR_SWI();
+extern void ISR_NFC();
+extern void ISR_USBHS();
+extern void ISR_Reserved113();
+extern void ISR_CMP3();
+extern void ISR_Reserved115();
+extern void ISR_Reserved116();
+extern void ISR_FTM3();
+extern void ISR_ADC2();
+extern void ISR_ADC3();
+extern void ISR_I2S1_Tx();
+extern void ISR_I2S1_Rx();
+
+//==============================================================================
+#ifdef __cplusplus
+}  /* extern "C" */
+#endif
+
+#endif

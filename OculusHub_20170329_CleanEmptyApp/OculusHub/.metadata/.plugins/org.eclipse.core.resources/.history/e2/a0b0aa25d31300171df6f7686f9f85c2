@@ -1,0 +1,65 @@
+/*==============================================================================
+File that contains definitions defining the version information
+==============================================================================*/
+#ifndef CMD_DEFS_H
+#define CMD_DEFS_H
+
+//------------------------------------------------------------------------------
+//Define Command Processor ID Codes (CID)
+//(in addition to those in cmd_proc.hpp)
+#define CID_SYS_ALIVE							0x01	/*!< Command sent to receive a simple alive message from the beacon */
+#define CID_SYS_INFO							0x02	/*!< Command sent to receive hardware/firmware identification message from the beacon */
+#define CID_SYS_REBOOT							0x03	/*!< Command sent to reboot the device */
+
+#define CID_PROG_INIT							0x0D	/*!< Command sent to initialise a flash programming sequence */
+#define CID_PROG_BLOCK							0x0E	/*!< Command sent to transfer a flash programming block */
+#define CID_PROG_UPDATE							0x0F	/*!< Command sent to update the firmware once program transfer has completed */
+
+#define CID_BATTDIST_STATUS						0x20	/*!< Command request a status message be returned */
+#define CID_BATTDIST_CONFIG						0x21	/*!< Command update the configuration of Power Control outputs */
+#define CID_BATTDIST_LIM_TEST					0x23	/*!< Command to perform a LIM (Line-Isolation-Monitor) Test */
+#define CID_BATTDIST_DISP_ENABLE				0x24	/*!< Command that turns on or off the OLED display */
+
+#define CID_BATTDIST_MSG_CLEAR					0x30	/*!< Command that removes all (non system) messages from the display */
+#define CID_BATTDIST_MSG_LIST					0x31	/*!< Command that returns a list of all messages shown on the display */
+#define CID_BATTDIST_MSG_SET					0x32	/*!< Command that adds or updates the contents of a message on the display */
+#define CID_BATTDIST_MSG_GET					0x33	/*!< Command that returns the contents of a display */
+#define CID_BATTDIST_MSG_REMOVE					0x34	/*!< Command that removes a specific message from the display */
+#define CID_BATTDIST_MSG_SHOW					0x35	/*!< Command that shows a specified message on the display for a set period of time */
+
+#define CID_BATTDIST_POWER_RESTART				0xA0	/*!< Command to request a restart of the system */
+#define CID_BATTDIST_POWER_SHUTDOWN				0xA1	/*!< Command to start a controlled shutdown of the whole system */
+#define CID_BATTDIST_POWER_KILL					0xA2	/*!< Command to immediately power down to BattDist board (and whole vehicle) */
+
+
+//I cant send a request shutdown
+
+//STATUS FLAG for request shutdown
+//STATUS FLAG for request start dive
+
+
+//------------------------------------------------------------------------------
+#define BATTDIST_STATUS_VERSION					1		/*!< The default version number of the status message */
+
+//Bit definitions for CID_BATTDIST_CONFIG and CID_BATTDIST_STATUS commands
+#define BATTDIST_STATUS_BATT1_FAULT_BIT			0
+#define BATTDIST_STATUS_BATT2_FAULT_BIT			1
+#define BATTDIST_STATUS_DISP_ENABLE_BIT			2
+#define BATTDIST_STATUS_BTN_PRESSED_BIT			5
+#define BATTDIST_STATUS_BTN_PRESSED_LATCH_BIT	6
+#define BATTDIST_STATUS_BTN_HELD_LATCH_BIT		7
+
+
+
+//------------------------------------------------------------------------------
+//Define Command Processor Status Codes (CST)
+//(in addition to those in cmd_proc.hpp)
+#define CST_PROG_FLASH_ERROR					0x0A	/*!< Raised if an error occurs while writing flash data */
+#define CST_PROG_FIRMWARE_ERROR					0x0B
+#define CST_PROG_SECTION_ERROR					0x0C
+#define CST_PROG_LENGTH_ERROR					0x0D
+#define CST_PROG_DATA_ERROR						0x0E
+#define CST_PROG_CHECKSUM_ERROR					0x0F
+
+//==============================================================================
+#endif

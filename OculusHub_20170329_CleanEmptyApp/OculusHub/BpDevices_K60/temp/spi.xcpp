@@ -1,0 +1,438 @@
+#include "spi.hpp"
+
+//==============================================================================
+//Class Implementation...
+//==============================================================================
+//CSpiPort
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor for the SPI Port
+@param port The port number (0, 1 or 2) of the SPI port to open
+@param csis A bit-field specifying the Chip Select Inactive states when the port is initialised - use SetChannel to configure these on a case by case basis
+*/
+CSpiPort::CSpiPort(uint8 port, uint8 csis)
+{		
+	//Initialise variables
+	_port = port;	
+	_csis = csis;
+	_enabled = false;
+	_open = false;
+	
+	//Get the hardware mapping for the port number	
+	switch(_port) {
+		#if SPI_PERIPHERALS >= 1
+			case 0 : {  _spi = SPI0; break; }
+		#endif
+		#if SPI_PERIPHERALS >= 2
+			case 1 : {  _spi = SPI1; break; }
+		#endif
+		#if SPI_PERIPHERALS >= 3
+			case 2 : {  _spi = SPI2; break; }
+		#endif
+		default : {_spi = NULL; break; }		
+	}		
+	
+	//Initialise the port
+	this->Enable(true);	
+	this->Init();
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the SPI Port
+*/
+CSpiPort::~CSpiPort()
+{	
+	//Shut down the port
+	this->Enable(false);	
+}
+
+/*!-----------------------------------------------------------------------------
+Function that closes an SPI port after use
+*/
+void CSpiPort::Close()
+{
+	//Reset the port
+	if(_enabled && _open) {		
+		this->Init();
+	}
+
+	//Mark the port as closed
+	_open = false;	
+}
+
+/*!-----------------------------------------------------------------------------
+Function that controls the clock/power to the SPI peripheral 
+@param state The enabled state the peripheral should be set to
+*/
+void CSpiPort::Enable(bool state)
+{
+	//If the port is open, close it
+	if(_open)
+		this->Close();
+		
+	_enabled = false;	
+	if(_spi) {
+		if(state) {
+			//Turn the peripheral on
+			switch(_port) {
+				#if SPI_PERIPHERALS >= 1
+					case 0 : { SET_BIT(SIM->SCGC6, SIM_SCGC6_SPI0_SHIFT); _enabled = true; break; }
+				#endif
+				#if SPI_PERIPHERALS >= 2
+					case 1 : { SET_BIT(SIM->SCGC6, SIM_SCGC6_SPI1_SHIFT); _enabled = true; break; }
+				#endif
+				#if SPI_PERIPHERALS >= 3
+					case 2 : { SET_BIT(SIM->SCGC3, SIM_SCGC3_SPI2_SHIFT); _enabled = true; break; }
+				#endif
+			}
+		}
+		else {				
+			//Turn the peripheral off					
+			switch(_port) {
+				#if SPI_PERIPHERALS >= 1
+					case 0 : { CLR_BIT(SIM->SCGC6, SIM_SCGC6_SPI0_SHIFT); break; }
+				#endif
+				#if SPI_PERIPHERALS >= 2
+					case 1 : { CLR_BIT(SIM->SCGC6, SIM_SCGC6_SPI1_SHIFT); break; }
+				#endif
+				#if SPI_PERIPHERALS >= 3
+					case 2 : { CLR_BIT(SIM->SCGC3, SIM_SCGC3_SPI2_SHIFT); break; }
+				#endif
+			}
+		}
+	}	
+}
+
+/*!-----------------------------------------------------------------------------
+Function that initialises the MCR to its default state for master mode,
+Sets the Chips selects to their inactive states and clears FIFO's
+*/
+void CSpiPort::Init()
+{
+	//Initialise the MCR register...
+	//Put the SPI into master mode, put chip selects to inactive, clear FIFO's and halt the SPI
+	if(_enabled)
+		_spi->MCR = SPI_MCR_MSTR_MASK | SPI_MCR_PCSIS(_csis) | SPI_MCR_CLR_RXF_MASK | SPI_MCR_CLR_TXF_MASK | SPI_MCR_HALT_MASK;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns weather the port is currently open (buys) or not
+@result True if the port is open, false if it is closed
+*/
+bool CSpiPort::IsOpen()
+{
+	return (_enabled && _open);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that opens a session on the SPI bus ready for use.
+If the port is already in use, the function returns false, otherwise true
+to indicate success
+@param chan The chip select number (channel) on the SPI port to use
+@result True if the port was opened, false is the port cannot be opened
+*/
+bool CSpiPort::Open(uint8 chan)
+{	
+	//If the peripheral isn't enabled, then enable it
+	if(!_enabled)
+		this->Enable(true);
+	
+	if(_enabled && !_open && (chan < SPI_CHANNELS)) {
+		//Only open, if hardware pointer is valid and the port is closed...
+		//Store values
+		_portChan = chan;		
+		
+		//Open the port, configure hardware as required...		
+		//Enable the clock gate for the SPI peripheral
+		this->Enable(true);
+		
+		//Initialise the SPI hardware
+		this->Init();
+		_spi->CTAR[0] = _ctar[chan];	//Example CTAR would be "SPI_CTAR_FMSZ(7) | SPI_CTAR_BR(3) | SPI_CTAR_CSSCK(2) | SPI_CTAR_PASC(1) | SPI_CTAR_ASC(1) | SPI_CTAR_DT(2)"
+			
+		//Indicate the port is open ready for use
+		_open = true;
+		return true;
+	}
+	return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that reads a number of 8-bit values from the Rx FIFO
+@param buf Pointer to the start of the storage for the 8-bit values to read
+@param cnt The number of values to read
+@result The number of values actually read
+*/
+uint16 CSpiPort::PopBytes(puint8 buf, uint16 cnt)
+{	
+	uint16 read = 0;
+	for(uint16 i = 0; i < cnt; i++) {
+		if(!this->PopByte(buf))
+			break;
+		read++;
+		buf++;
+	}
+	return read;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that reads a single 8-bit value from the Rx FIFO
+@param data Pointer to where the read data should be stored (or Null to read but note store the value)
+@result True if data was available and read, other false if data was not available
+*/
+bool CSpiPort::PopByte(puint8 data)
+{	
+	if(_enabled && _open) {
+		//Check data is available on the FIFO
+		if(IS_BIT_SET(_spi->SR, SPI_SR_RFDF_SHIFT)) {
+			uint16 value = _spi->POPR;
+			if(data)
+				*data = (uint8)value;
+			return true;
+		}
+	}	
+	return false;	
+}
+
+/*!-----------------------------------------------------------------------------
+Function that writes a sequence of 8-bit data values on the Tx FIFO for transmission
+@param buf Pointer to the start of the 8-bit values to write
+@param cnt The number of values to write
+@result The number of values actually written
+*/
+uint16 CSpiPort::PushBytes(puint8 buf, uint16 cnt)
+{
+	uint16 write = 0;	
+	uint16 i = cnt;
+	while(i > 0) {	
+		bool last = (i == 1);
+		if(!this->PushByte(*buf, last))
+			break;							
+		write++;
+		buf++;
+		i--;
+	}
+	return write;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that writes a 8-bit data onto the Tx FIFO for transmission
+@param data The 8-bit data value to send
+@param last True if the byte is the last byte in a transaction (queue), otherwise false
+@result True if the dtaa was transmitted correctly
+*/
+bool CSpiPort::PushByte(uint8 data, bool last)
+{
+	if(_enabled && _open) {
+		//Check space is available on the FIFO
+		if(IS_BIT_SET(_spi->SR, SPI_SR_TFFF_SHIFT)) {
+			//Make the register value to write
+			uint32 value = data;
+			value |= SPI_PUSHR_PCS(BIT(_portChan));	//Bit map for the chip select
+			value |= SPI_PUSHR_CTAS(0);				//Always use CTAR[0]
+			
+			if(last)
+				SET_BIT(value, SPI_PUSHR_EOQ_SHIFT);	//Indicate end of queue
+			else
+				SET_BIT(value, SPI_PUSHR_CONT_SHIFT);	//Indicate CS should remain asserted
+				
+			//Put the register
+			_spi->PUSHR = value;
+			return true;
+		}
+	}
+	return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the inactive level of the specified chip select
+The changes will only be applied when a port is next opened (as MCR cannot
+be modified while clocks/module is disabled)
+@param chan The chip select number to modify
+@param csis The logical state the chip select asserts be when inactive (Chip Select Inactive State)
+*/
+void CSpiPort::SetChannel(uint8 chan, bool csis, uint32 ctar)
+{
+	if(chan < SPI_CHANNELS) {
+		//Setup the ChipSelect Inactive State Bit
+		if(csis)
+			SET_BIT(_csis, chan);
+		else
+			CLR_BIT(_csis, chan);					
+		
+		//Store the Control Transfer Attributes Register value
+		_ctar[chan] = ctar;
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that performs a number of 8-bit shifts of tx and rx data between the 
+SPI devices, and blocks while it waits for a transfers to complete
+@param bufTx Pointer to the start of the 8-bit values to write
+@param bufRx Pointer to the start of the storage for the 8-bit values to read (or Null to discard received data)
+@param cnt The number of values to transfer
+@result The number of values actually transfered
+*/
+uint16 CSpiPort::ShiftBytes(puint8 bufTx, puint8 bufRx, uint16 cnt)
+{
+	uint8 shifted = 0;	
+	uint16 i = cnt;
+	while(i > 0) {	
+		bool last = (i == 1);	//Determine if we're on the last byte
+		
+		//Transfer the byte, and get the result
+		if(!this->ShiftByte(*bufTx, bufRx, last))
+			break;		
+		
+		shifted++;				//Incriment count of bytes shifted
+		bufTx++;				//Move Tx buffer pointer
+		if(bufRx)				//If not null, move Rx buffer pointer
+			bufRx++;
+		i--;
+	}
+	return shifted;	
+}
+
+/*!-----------------------------------------------------------------------------
+Function that performs an immediate shift of tx and rx data between the 
+SPI devices, and blocks while it waits for a transfer to complete
+@param dataTx The 8-bit value to transmit
+@param dataRx Pointer to where the 8-bit read value should be stored (or Null to discard)
+@param last True if this is the last byte in a sequence, and CS should be de-asserted when done
+@result True if the transfer completed without errors, otherwise false
+*/
+bool CSpiPort::ShiftByte(uint8 dataTx, puint8 dataRx, bool last)
+{
+	if(_enabled && _open) {
+		//Put the byte to send onto the fifo
+		if(!this->PushByte(dataTx, last))
+			return false;
+							
+		//Start a transfer but just for a single frame
+		CLR_BIT(_spi->MCR, SPI_MCR_HALT_SHIFT);					
+		
+		//Wait for the frame to be transmitted		
+		while(IS_BIT_CLR(_spi->SR, SPI_SR_TCF_SHIFT));				
+		
+		//Stop the transfer and clear status register flags
+		SET_BIT(_spi->MCR, SPI_MCR_HALT_SHIFT); 
+		SET_BITS(_spi->SR, SPI_SR_TCF_MASK | SPI_SR_EOQF_MASK);		
+				
+		//Read the received value
+		if(!this->PopByte(dataRx))
+			return false;
+			
+		//Indicate success
+		return true;
+	}		
+	return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that performs an SPI transfer, sending anything on the TX FIFO and
+shifting received data into the receive FIFO
+*/
+bool CSpiPort::ShiftFifo()
+{
+	if(_enabled && _open) {
+		// Start a transfer (once FIFO is loaded)
+		CLR_BIT(_spi->MCR, SPI_MCR_HALT_SHIFT);			
+		
+		// Wait for the last entry in the queue to be transmitted
+		while(IS_BIT_CLR(_spi->SR, SPI_SR_EOQF_SHIFT));		
+		
+		//Stop the transfer and clear status register flags
+		SET_BIT(_spi->MCR, SPI_MCR_HALT_SHIFT); 		
+		SET_BITS(_spi->SR, SPI_SR_TCF_MASK | SPI_SR_EOQF_MASK);
+				
+		//Indicate success
+		return true;
+	}
+	else {
+		//Indicate failure
+		return false;
+	}
+}
+
+//==============================================================================
+//CSpiDevice
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor for the SPI Device
+@param spi Pointer to the SPI Port object to use for data transfer
+@param chan The SPI Chip Select index to use for the device
+*/
+CSpiDevice::CSpiDevice(PSpiPort spi, uint8 chan)
+{	
+	//Store the SPI module and ChipSelect to use
+	_spi = spi;
+	_spiChan = chan;
+	_spiCtar = 0;
+	_spiCsis = true;
+	_spiOpen = false;			
+	
+	//NB: The top level constructor should modify the FMSZ, CPOL, CPHA and LSBFS
+	//bits in CTAR for its own requirements, then call the "_spi->InitialiseSpi" function
+	//to register these into the SPI driver.
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the SPI Device
+*/
+CSpiDevice::~CSpiDevice()
+{			
+	this->Close();	
+}
+
+/*!-----------------------------------------------------------------------------
+Function that closes the device after use, and releases the SPI bus
+*/
+void CSpiDevice::Close()
+{		
+	//Only close the SPI port if WE opened it (as it could be shared by other devices)
+	if(_spiOpen) {
+		_spi->Close();
+		_spiOpen = false;
+	}	
+}
+
+/*!-----------------------------------------------------------------------------
+Function used to register the SPI device's requirements into the SPI hardware
+@param chan The SPI Chip Select index to use for the device
+@param csis The SPI Chip Select Inactive State to use
+@param ctar The clock bit and timing settings to use in the CTAR register
+*/
+void CSpiDevice::InitialiseSpi(bool csis, uint32 ctar)
+{
+	//Store the settings
+	_spiCsis = csis;
+	_spiCtar = ctar;
+
+	if(_spi && !_spiOpen) {
+		_spi->SetChannel(_spiChan, _spiCsis, _spiCtar);
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns if the device is open for use
+@result True if the device has been opened
+*/
+bool CSpiDevice::IsOpen()
+{			
+	return _spiOpen;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that opens the device ready for use, and allocates usage of the SPI bus
+@result True if the port was opened sucessfully, otherwise false
+*/
+bool CSpiDevice::Open()
+{			
+	if(!_spiOpen && _spi && _spi->Open(_spiChan)) {
+		_spiOpen = true;		
+	}	
+	return _spiOpen;
+}
+
+//==============================================================================
+

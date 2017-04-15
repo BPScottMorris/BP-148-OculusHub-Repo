@@ -1,0 +1,477 @@
+/*==============================================================================
+C++ Module that provides the definitions and implementation for a wrapper class
+to provide management and access functions for an ADC Kinetis K60 peripheral.
+
+This module defines two classes - an AdcDevice and AdcChannel.
+The AdcDevice class is instantiated once per physical ADC module in the device
+and provided a wrapper class to access hardware functions
+The AdcChannel class is inherited from for each sensor/input connected externally
+the the ADC. Only one AdcChannel can be connected to the port at a time, but as each
+device stores its own settings it allows dynamic swapping of reading different
+ADC inputs.
+
+10/10/2013 - Created v1.0 of file (from C code by K.Webster & R.Sharphouse)
+18/08/2016 - Updated v1.1 of file for use in KDS with K22 processors
+==============================================================================*/
+//Prevent multiple inclusions of this file
+#ifndef ADC_HPP
+#define ADC_HPP
+
+//Include common type definitions and macros
+#include "common.h"
+
+//Include the MCG device to get clock timings
+#include "mcg.hpp"
+
+//Include the FIFO buffer used by the UART transmit and receive routines
+#include "fifobuffer.hpp"
+
+//Include the event handler library
+#include "callback.hpp"
+
+//==============================================================================
+//Class Definition...
+//==============================================================================
+/*! Define the source of the ADC Bus Clock */
+#define ADC_BUS_CLK 	CMcg::ClkIntBusFreq
+
+//If the Alternate ADC clock input isn't defined, then define it as the BUS CLOCK
+#if !defined(ADC_ALT_CLK)
+	#define ADC_ALT_CLK 	ADC_BUS_CLK
+	PRAGMA_INFO("The ADC_ALT_CLK frequency isn't defined - assumed 'ADC_BUS_CLK'.")
+#endif
+
+	//If the ADC_HAS_PGA flag hasn't been set then indicate there is no PGA
+#if !defined(ADC_HAS_PGA)
+	#define ADC_HAS_PGA		false
+#endif
+
+/*! Define the disabled channel of the ADC */
+#define ADC_CHAN_DISABLED		31
+
+/*! Defines an enumeration for specifying the ADC format */
+enum EAdcFormat {
+	adf8BitSingle,
+	adf9BitDiff,
+	adf10BitSingle,
+	adf11BitDiff,
+	adf12BitSingle,
+	adf13BitDiff,
+	adf16BitSingle,
+	adf16BitDiff
+};
+
+/*! Defines an enumeration for the ADC clock source */
+enum EAdcClkSource {
+	adcBusClk,
+	adcBusClkDiv2,
+	adcAltClk
+};
+
+/*! Defines an enueration for the ADC clock source divider */
+enum EAdcClkDivider {
+	addClkDiv1,
+	addClkDiv2,
+	addClkDiv4,
+	addClkDiv8
+};
+
+/*! Defines an enumerations for the sample time the ADC will use */
+enum EAdcSampleTime {
+	adtShort,
+	adtLong2,
+	adtLong6,
+	adtLong12,
+	adtLong20
+};
+
+/*! Defines an enueration for the multiplexor that selects the input bank 'A' or 'B' to the ADC */
+enum EAdcMuxBank {
+	admBankA,
+	admBankB
+};
+
+/*! Defines an enueration that specified how many samples will be averages together into each result */
+enum EAdcAveraging {
+	advDisabled,
+	advAverage4,
+	advAverage8,
+	advAverage16,
+	advAverage32
+};
+
+/*! Defines an enueration that controls the PGA gain setting */
+enum EAdcPGA {
+	adpDisabled,
+	adpGainX1,
+	adpGainX2,
+	adpGainX4,
+	adpGainX8,
+	adpGainX16,
+	adpGainX32,
+	adpGainX64,
+};
+
+/*! Defines an enueration that specifies the ADC trigger source - see SIM_SOPT7 register fields */
+enum EAdcTrigger {
+	adtSoftware,
+	adtHardwarePDB,
+	adtHardwareALT
+};
+
+/*! Defines an enumeration that specifies the ADC pre-trigger source - see SIM_SOPT7 register fields */
+enum EAdcPreTriggerSrc {
+	adtpPreTriggerA,
+	adtpPreTriggerB,
+};
+
+/*! Defines an enumeration that specifies the ALT trigger source for ADC's - see SIM_SOPT7 register fields */
+enum EAdcAltTriggerSrc {
+	adtaExternal = 0,
+	adtaCmp0 = 1,
+	adtaCmp1 = 2,
+	adtaCmp2 = 3,
+	adtaPitTrig0 = 4,
+	adtaPitTrig1 = 5,
+	adtaPitTrig2 = 6,
+	adtaPitTrig3 = 7,
+	adtaFtm0 = 8,
+	adtaFtm1 = 9,
+	adtaFtm2 = 10,
+	adtaFtm3 = 11,
+	adtaRtcAlarm = 12,
+	adtaRtcSeconds = 13,
+	adtaLptmr = 14,
+	adtaCmp3 = 15		
+};
+
+//------------------------------------------------------------------------------
+/*! Defines a structure to hold ADC configuration data */
+struct TAdcConfig {
+	uint8  CFG1; 
+	uint8  CFG2; 
+	uint16 CV1; 
+	uint16 CV2; 
+	uint8  SC1[2]; 	
+	uint8  SC2;
+	uint8  SC3; 	
+	uint32 PGA;	
+	uint8  SOPT7_TRIG;		/*!< Register in the SIM module, configuring the ADC trigger source */
+};
+
+/*! Define a pointer to an ADC configuration structure */
+typedef TAdcConfig* PAdcConfig;
+
+//------------------------------------------------------------------------------
+/*! Defines a structure to hold ADC calibration data */
+struct TAdcCalibration { 
+	uint16 OFS;
+	uint16 PG;
+	uint16 MG;
+	uint8  CLPD;
+	uint8  CLPS;
+	uint16 CLP4;
+	uint16 CLP3;
+	uint8  CLP2;
+	uint8  CLP1;
+	uint8  CLP0;
+	//uint8  dummy;
+	uint8  CLMD;
+	uint8  CLMS;
+	uint16 CLM4;
+	uint16 CLM3;
+	uint8  CLM2;
+	uint8  CLM1;
+	uint8  CLM0;
+}; 
+
+/*! Define a pointer to an ADC calibration strcutrue */
+typedef TAdcCalibration* PAdcCalibration;
+
+//------------------------------------------------------------------------------
+/*! Defines a strcutre to hold 'logical' settings values for the ADC that
+can be translated into a Config register strcuture */
+struct TAdcSettings {
+	public:
+		//Fields
+		EAdcClkSource		ClkSource;
+		EAdcClkDivider		ClkDiv;
+		bool				ClkAsyncOut;		
+		bool				PgaChopping;
+		bool				PgaLowPower;
+		EAdcPGA				PgaGain;		
+		bool				SampleCont;			/*!< True for continuous sampling */
+		bool				SampleIRQ;			/*!< True to allow IRQ's to be generated */
+		EAdcAveraging		SampleAveraging;
+		uint8				SampleChannel;		/*!< Specifies the channel the ADC will sample on */
+		EAdcFormat			SampleFormat;	
+		bool				SampleHighSpeed;
+		bool				SampleLowPower;
+		EAdcMuxBank			SampleMuxBank;		
+		EAdcSampleTime		SampleTime;				
+		EAdcTrigger			TrigMode;			/*!< Specifies software or hardware sampling triggering */
+		EAdcPreTriggerSrc	TrigPreSrc;
+		EAdcAltTriggerSrc	TrigAltSrc;			/*!< Specifies the ADC sampling trigger, if Trig Mode is set to HardwareAlt */
+		
+		//Default values constructor
+		explicit TAdcSettings(uint8 channel = ADC_CHAN_DISABLED);
+		
+		//Methods
+		double CalcClkFreq();
+		double CalcSampleFreq();
+		double CalcSamplePeriod();
+		void MakeConfig(PAdcConfig config);
+};		
+		
+/*!< Define a pointer to a settings structure */
+typedef TAdcSettings* PAdcSettings;
+
+//------------------------------------------------------------------------------
+//Predeclare the classes
+class CAdcDevice;
+class CAdcChannelBase;
+class CAdcChannel;
+class CAdcFifoChannel;
+class CAdcFilteredChannel;
+
+/*! Define a pointer for the object */
+typedef CAdcDevice* PAdcDevice;
+
+/*! Define a pointer for the object */
+typedef CAdcChannelBase* PAdcChannelBase;
+
+/*! Define a pointer for the object */
+typedef CAdcChannel* PAdcChannel;
+
+/*! Define a pointer for the object */
+typedef CAdcFifoChannel* PAdcFifoChannel;
+
+/*! Define a pointer for the object */
+typedef CAdcFilteredChannel* PAdcFilteredChannel;
+
+//------------------------------------------------------------------------------
+/*! 
+Class that impliments a wrapper providing management and access functions
+for an I2C hardware peripheral, in master mode.
+*/
+class CAdcDevice {
+	private:			
+		ADC_Type*		_adc;				/*!< Pointer to the struct accessing ADC hardware registers */
+		uint8			_adcId;				/*!< The hardware port to connect to */
+		PAdcChannelBase	_channel;			/*!< The device connected to the ADC port, or null for not-connected */
+		bool			_calibrated;		/*!< Calibrated Flag - set when claibration passed */		
+		
+	protected:	
+		//Protected methods		
+		bool Connect(PAdcChannelBase channel);
+		bool Disconnect();		
+	
+	public:
+		//Construction and Disposal
+		CAdcDevice(uint8 id);
+		virtual ~CAdcDevice();
+		
+		//Methods	
+		bool					Calibrate();			
+		void					DoIRQ();
+		bool					GetCalibration(PAdcCalibration cal);
+		bool					GetConfig(PAdcConfig config);
+		inline PAdcChannelBase	GetChannel();	
+		inline bool 			IsBusy();		
+		inline bool				IsCalibrated();		
+		inline bool				IsComplete();
+		void					SetCalibration(PAdcCalibration cal);
+		void					SetConfig(PAdcConfig config);
+		void					SetNvicIRQ(bool state);
+		void					SetSysClkEn(bool state);
+		
+		//void Close();
+		//void Enable(bool state);
+		//inline bool IsOpen();
+		//bool Open(uint8 addr);		
+		
+		//Friendships
+		friend class CAdcChannelBase;		//Allow CAdcChannelBase methods to access protected and private functions of this class
+		
+		//Static Variables		
+		static PAdcDevice AdcDevice[ADC_PERIPHERALS];		/*!< Global method pointer for interrupt handlers */		
+};
+
+//------------------------------------------------------------------------------
+/*!
+Abstract base class from which devices wishing to use an ADC channel should inherit from
+*/
+class CAdcChannelBase {
+	private:						
+		
+	protected:		
+		ADC_Type* 			_adcReg;					/*!< Pointer to the struct accessing ADC hardware registers */			
+		TAdcConfig 			_config;					/*!< The ADC configuration the channel uses */
+		PAdcDevice 			_device;					/*!< Pointer to the ADC device to use for hardware access */
+		bool 				_open;						/*!< True when the ADC channel is connected to the device and opened for use */			
+				
+		//Protected Methods				
+		virtual void DoIRQ();							/*!< Abstract DoIRQ funciton that is called when an Adc Device IRQ is asserted */
+		
+	public:
+		//Construction and Disposal
+		CAdcChannelBase(PAdcDevice device);
+		virtual ~CAdcChannelBase();
+		
+		//Methods			
+		virtual void Close();							
+		TAdcConfig GetConfig();
+		bool IsBusy();
+		bool IsComplete();
+		bool IsOpen();
+		virtual bool Open();				
+		inline void SetChannel(uint8 channel);
+		void SetConfig(PAdcConfig value);
+		void SetInterrupts(bool value);
+		void SetSettings(PAdcSettings value);		
+		bool Start();
+		bool Start(uint8 channel);
+		bool StartCont();
+		bool StartCont(uint8 channel);
+		bool StartSingle();
+		bool StartSingle(uint8 channel);
+		virtual bool StartSingleWait();
+		bool StartSingleWait(uint8 channel);
+		void Stop();
+		
+		//Friendships
+		friend void CAdcDevice::DoIRQ(void);	//Allow the CAdcDevice::DoIRQ routine to call the local DoIRQ protected method
+		
+		//Event dispatchers
+		CCallback OnIRQ;
+};
+
+//------------------------------------------------------------------------------
+/*!
+Base class from which devices wishing to use a ADC channel (with no result buffering) should inherit from.
+*/
+class CAdcChannel : public CAdcChannelBase {
+	private:			
+		typedef CAdcChannelBase base;		/*!< Define simplified reference to the parent class */		
+				
+	public:
+		//Construction and Disposal
+		CAdcChannel(PAdcDevice device);
+		virtual ~CAdcChannel();
+		
+		//Methods				
+		bool Read(puint16 result);		
+		uint16 ReadWait();				
+};
+
+//------------------------------------------------------------------------------
+/*!
+Base class from which devices wishing to use a buffered ADC channel should inherit from.
+The buffered channel, provides a FIFO on the ADC interrupt, to buffer conversion results.
+*/
+class CAdcFifoChannel : public CAdcChannelBase {
+	private:			
+		typedef CAdcChannelBase base;		/*!< Define simplified reference to the parent class */	
+	
+		PUInt16FifoBuffer _resultBuf;		/*!< Pointer to a FIFO buffer to hold ADC data */		
+			
+	protected:						
+		//Methods		
+		void DoIRQ();
+		
+	public:
+		//Construction and Disposal
+		CAdcFifoChannel(PAdcDevice device, uint32 bufSize = 16);
+		virtual ~CAdcFifoChannel();
+		
+		//Methods	
+		uint32 GetBufferCount();
+		uint32 GetBufferSize();
+		bool Open();		
+		bool Read(puint16 result);		
+		uint16 ReadWait();
+		void ReadWait(puint16 pBuf, uint32 count);
+		void SetBufferSize(uint32 value);
+};
+
+//------------------------------------------------------------------------------
+/*!
+Base class from which devices wishing to use a ADC channel (with no result buffering) should inherit from.
+*/
+class CAdcFilteredChannel : public CAdcChannelBase {
+	private:			
+		typedef CAdcChannelBase base;		/*!< Define simplified reference to the parent class */	
+				
+		volatile double _fltResult;
+		volatile bool _fltReset;
+		double _fltScalar;				
+		double _fltSmoothing;
+		
+	protected:						
+		//Methods		
+		double CalcFilter(uint16 value);
+		void DoIRQ();
+		
+	public:
+		//Construction and Disposal
+		CAdcFilteredChannel(PAdcDevice device);
+		virtual ~CAdcFilteredChannel();
+		
+		//Methods			
+		double GetSmoothing();
+		double GetScalar();						
+		bool Read(pdouble result);									
+		void Reset();		
+		void SetScalar(double value);
+		void SetSmoothing(double value);
+		bool StartSingleWait();
+};
+
+//==============================================================================
+//Interrupt Handler Definitions...
+//==============================================================================
+#ifndef ADC_PERIPHERALS
+	PRAGMA_ERROR("Number of ADC peripherals not defined")
+#endif
+
+//If explicitly previously allowed, disable IRQ's for ADC's
+#ifndef ADC0_CONNECT_IRQ
+	#define ADC0_CONNECT_IRQ	false
+#endif
+#ifndef ADC1_CONNECT_IRQ
+	#define ADC1_CONNECT_IRQ	false
+#endif
+#ifndef ADC2_CONNECT_IRQ
+	#define ADC2_CONNECT_IRQ	false
+#endif
+#ifndef ADC3_CONNECT_IRQ
+	#define ADC3_CONNECT_IRQ	false
+#endif
+
+/*! Defines the 'Disabled' channel of the ADC */
+#define ADC_CHAN_DISABLED		31
+
+//Include prototypes for hardware Interrupt handlers (See Interrupt Vector Table)
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#if ADC0_CONNECT_IRQ
+void ISR_ADC0(void)	__attribute__ ((interrupt));
+#endif
+#if ADC1_CONNECT_IRQ
+void ISR_ADC1(void)	__attribute__ ((interrupt));
+#endif
+#if ADC2_CONNECT_IRQ
+void ISR_ADC2(void)	__attribute__ ((interrupt));
+#endif
+#if ADC3_CONNECT_IRQ
+void ISR_ADC3(void)	__attribute__ ((interrupt));
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+//==============================================================================
+#endif

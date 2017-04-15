@@ -1,0 +1,47 @@
+/*==============================================================================
+01/08/2016 - Created V1.0 of file
+==============================================================================*/
+//Prevent multiple inclusions of this file
+#ifndef FTM_PWM_HPP
+#define FTM_PWM_HPP
+
+//Include the base FTM class to inherit from
+#include "ftm.hpp"
+
+//==============================================================================
+//Class Definition...
+//==============================================================================
+/*!
+Defines a class that enhances an FTM module to provide complimentary Class-D
+style driver PWM controlled outputs.
+*/
+class CFtmPwm : public CFtm {
+	private:
+		typedef CFtm base;
+	
+		uint8 _chan;
+
+	private:	
+
+	protected:
+		//Protected methods			
+		void			DoStart();
+		void			DoStop();
+		
+	public:
+		//Construction & Disposal
+		CFtmPwm(uint8 ftmId, uint8 chan = 0);
+		virtual ~CFtmPwm();
+	
+		//Methods
+		void SetChannel(uint8 chan);
+		void SetPwmCnt(uint16 cnt);
+		void SetPwmPct(float percent);
+	
+};
+
+/*! Define a pointer to a Flex-Timer PWM Module */
+typedef CFtmPwm* PFtmPwm;
+		
+//==============================================================================
+#endif

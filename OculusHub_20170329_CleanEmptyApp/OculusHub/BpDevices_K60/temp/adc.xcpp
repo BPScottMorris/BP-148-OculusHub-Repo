@@ -1,0 +1,1438 @@
+#include "adc.hpp"
+
+//==============================================================================
+//Class Implementation...
+//==============================================================================
+//ADC Interrupt Handlers
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Function called from the Interrupt Vector Table.
+If an ADC class instance has been created for this comparator, then call its service function
+*/
+#if ADC0_CONNECT_IRQ
+void ISR_ADC0(void) {
+	if (CAdcDevice::AdcDevice[0]) 		
+		CAdcDevice::AdcDevice[0]->DoIRQ();	
+}
+#endif
+
+/*!-----------------------------------------------------------------------------
+Function called from the Interrupt Vector Table.
+If an ADC class instance has been created for this comparator, then call its service function
+*/
+#if ADC1_CONNECT_IRQ
+void ISR_ADC1(void) {
+	if (CAdcDevice::AdcDevice[1]) 		
+		CAdcDevice::AdcDevice[1]->DoIRQ();	
+}
+#endif
+
+/*!-----------------------------------------------------------------------------
+Function called from the Interrupt Vector Table.
+If an ADC class instance has been created for this comparator, then call its service function
+*/
+#if ADC2_CONNECT_IRQ
+void ISR_ADC2(void) {
+	if (CAdcDevice::AdcDevice[2]) 		
+		CAdcDevice::AdcDevice[2]->DoIRQ();	
+}
+#endif
+
+/*!-----------------------------------------------------------------------------
+Function called from the Interrupt Vector Table.
+If an ADC class instance has been created for this comparator, then call its service function
+*/
+#if ADC3_CONNECT_IRQ
+void ISR_ADC3(void) {
+	if (CAdcDevice::AdcDevice[3]) 		
+		CAdcDevice::AdcDevice[3]->DoIRQ();	
+}
+#endif
+
+//==============================================================================
+//TAdcSettings Struct
+//==============================================================================
+TAdcSettings::TAdcSettings(uint8 channel) {
+	//Initialise default values
+	ClkSource = adcBusClk;
+	ClkDiv = addClkDiv1;
+	ClkAsyncOut = false;
+	PgaChopping = false;
+	PgaLowPower = false;
+	PgaGain = adpDisabled;
+	SampleCont = false;
+	SampleIRQ = false;
+	SampleAveraging = advDisabled;
+	SampleChannel = channel;
+	SampleFormat = adf8BitSingle;	
+	SampleHighSpeed = false;
+	SampleLowPower = false;
+	SampleMuxBank = admBankA;		
+	SampleTime = adtShort;				
+	TrigMode = adtSoftware;
+	TrigPreSrc = adtpPreTriggerA;
+	TrigAltSrc = adtaExternal;
+};
+
+/*!-----------------------------------------------------------------------------
+Function that returns the ADC Clock (ADCK) that sampling timing derives from
+@result The clock frequency in Hertz
+*/
+double TAdcSettings::CalcClkFreq()
+{
+	double clkSrc;
+	
+	//Get the source clock frequency
+	switch(this->ClkSource) {
+		case adcBusClk : clkSrc = ADC_BUS_CLK; break;
+		case adcBusClkDiv2 : clkSrc = (double)(ADC_BUS_CLK) / 2.0; break;
+		case adcAltClk : clkSrc = ADC_ALT_CLK; break;
+		default : return 0;
+	}
+	
+	//Get the clock divisor
+	switch(this->ClkDiv) {
+		case addClkDiv1 : break; //clkSrc = clkSrc / 1; break;
+		case addClkDiv2 : clkSrc = clkSrc / 2.0; break;
+		case addClkDiv4 : clkSrc = clkSrc / 4.0; break;
+		case addClkDiv8 : clkSrc = clkSrc / 8.0; break;
+		default : return 0;
+	}	
+		
+	return clkSrc;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns the ADC sample rate (based on the current settings)
+in Hertz. If the settings are invalid and the rate can't be computed, then
+zero is returned.
+@result The ADC sampling frequency in Hertz
+*/
+double TAdcSettings::CalcSampleFreq()
+{
+	double period = this->CalcSamplePeriod();
+	if(period > 0)		
+		return 1.0 / period;
+	else
+		return 0;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that computes the current sample period from the currently specified
+value. From this the approximate sample rate can also be computed (see GetSampleFreq)
+@result The sample period in seconds.
+*/
+double TAdcSettings::CalcSamplePeriod()
+{	
+	//Get the frequency of the ADC clk
+	double adcFreq = this->CalcClkFreq();
+	if(adcFreq == 0)
+		return 0;
+
+	//Get the periods used for the timing calculation
+	double adcPeriod = 1.0 / adcFreq;
+	double busPeriod = 1.0 / ADC_BUS_CLK;
+	
+	//Calculate the Single of First Continuous Time Adder (SFC_ADDR) value...
+	double sfcAdder;
+	bool adlsmp = (this->SampleTime != adtShort) ? true : false;	
+	if(adlsmp)
+		sfcAdder = (3 * adcPeriod) + (5 * busPeriod);
+	else
+		sfcAdder = (5 * adcPeriod) + (5 * busPeriod);
+	
+	//Calculate the Average Number (AverageNum) value...
+	uint8 averageNum;
+	switch(this->SampleAveraging) {
+		case advDisabled : averageNum = 1; break;
+		case advAverage4 : averageNum = 4; break;
+		case advAverage8 : averageNum = 8; break;
+		case advAverage16 : averageNum = 16; break;
+		case advAverage32 : averageNum = 32; break;
+		default : return 0;
+	}
+	
+	//Calculate the Base Conversion Time (BCT) value...
+	double bct;
+	switch(this->SampleFormat) {
+		case adf8BitSingle : bct = 17.0 * adcPeriod; break;
+		case adf9BitDiff : bct = 27.0 * adcPeriod; break;
+		case adf10BitSingle : bct = 20.0 * adcPeriod; break;
+		case adf11BitDiff : bct = 30.0 * adcPeriod; break;
+		case adf12BitSingle : bct = 20.0 * adcPeriod; break;
+		case adf13BitDiff : bct = 30.0 * adcPeriod; break;
+		case adf16BitSingle : bct = 25.0 * adcPeriod; break;
+		case adf16BitDiff : bct = 34.0 * adcPeriod; break;
+		default : return 0;
+	}
+	
+	//Calculate the Long Sample Time Adder (LSTAdder) value...
+	double lstAdder;
+	switch(this->SampleTime) {
+		case adtShort : lstAdder = 0; break;
+		case adtLong2 : lstAdder = 2 * adcPeriod; break;
+		case adtLong6 : lstAdder = 6 * adcPeriod; break;
+		case adtLong12 : lstAdder = 12 * adcPeriod; break;
+		case adtLong20 : lstAdder = 20 * adcPeriod; break;
+		default : return 0;
+	}
+	
+	//Calculate the High Speed Conversion Time Adder (HSCAddr) value...
+	double hstAdder;
+	if(!this->SampleHighSpeed)
+		hstAdder = 0;
+	else
+		hstAdder = 2 * adcPeriod;
+	
+	//Compute the final period
+	double result = sfcAdder + (averageNum * (bct + lstAdder + hstAdder));
+	return result;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that converts an ADC settings structure into an ADC configuration 
+structure
+@param[in]	settings	Pointer to where the source settings structure is located
+@param[out]	config		Pointer to where the configuration values should be written
+*/
+void TAdcSettings::MakeConfig(PAdcConfig config)
+{	
+	//Clear the config structure
+	config->CFG1 = 0;
+	config->CFG2 = 0;
+	config->CV1 = 0;
+	config->CV2 = 0;
+	config->SC1[0] = 0;
+	config->SC1[1] = 0;
+	config->SC2 = 0;
+	config->SC3 = 0;
+	config->PGA = 0;
+	config->SOPT7_TRIG = 0;
+		
+	//ClkSource : Setup CFG1->ADICLK
+	//CLR_BITS(config->CFG1, ADC_CFG1_ADICLK_MASK);
+	switch(this->ClkSource) {
+		case adcBusClk :     config->CFG1 |= ADC_CFG1_ADICLK(0); break;
+		case adcBusClkDiv2 : config->CFG1 |= ADC_CFG1_ADICLK(1); break;
+		case adcAltClk :     config->CFG1 |= ADC_CFG1_ADICLK(2); break;			
+	}
+	
+	//ClkDiv : Setup CFG1->ADIV
+	//CLR_BITS(config->CFG1, ADC_CFG1_ADIV_MASK);
+	switch(this->ClkDiv) {
+		case addClkDiv1 : config->CFG1 |= ADC_CFG1_ADIV(0); break;
+		case addClkDiv2 : config->CFG1 |= ADC_CFG1_ADIV(1); break;
+		case addClkDiv4 : config->CFG1 |= ADC_CFG1_ADIV(2); break;
+		case addClkDiv8 : config->CFG1 |= ADC_CFG1_ADIV(3); break;			
+	}
+	
+	//SampleFormat : Setup CFG1->MODE, SC1[x]->ADC_SC1_DIFF
+	//CLR_BITS(config->CFG1, ADC_CFG1_MODE_MASK);
+	//CLR_BITS(config->SC1[0], ADC_SC1_DIFF_MASK);
+	switch(this->SampleFormat) {
+		case adf8BitSingle :  SET_BITS(config->CFG1, ADC_CFG1_MODE(0)); break;
+		case adf9BitDiff :    SET_BITS(config->CFG1, ADC_CFG1_MODE(0)); SET_BITS(config->SC1[0], ADC_SC1_DIFF_MASK); break;			
+		case adf10BitSingle : SET_BITS(config->CFG1, ADC_CFG1_MODE(1)); break;
+		case adf11BitDiff :   SET_BITS(config->CFG1, ADC_CFG1_MODE(1)); SET_BITS(config->SC1[0], ADC_SC1_DIFF_MASK); break;			
+		case adf12BitSingle : SET_BITS(config->CFG1, ADC_CFG1_MODE(2)); break;
+		case adf13BitDiff :   SET_BITS(config->CFG1, ADC_CFG1_MODE(2)); SET_BITS(config->SC1[0], ADC_SC1_DIFF_MASK); break;			
+		case adf16BitSingle : SET_BITS(config->CFG1, ADC_CFG1_MODE(3)); break;
+		case adf16BitDiff :   SET_BITS(config->CFG1, ADC_CFG1_MODE(3)); SET_BITS(config->SC1[0], ADC_SC1_DIFF_MASK); break;
+	}	
+	
+	//SampleLowPower : Setup CFG1->ADLPC
+	if(this->SampleLowPower)
+		SET_BITS(config->CFG1, ADC_CFG1_ADLPC_MASK);	//Low Power Mode
+	//else
+	//	CLR_BITS(config->CFG1, ADC_CFG1_ADLPC_MASK);	//Normal Mode
+		
+	
+	//SampleTime : Setup CFG1->ADLSMP, CFG2->ADLSTS
+	//CLR_BITS(config->CFG1, ADC_CFG1_ADLSMP_MASK);		
+	//CLR_BITS(config->CFG2, ADC_CFG2_ADLSTS_MASK);
+	switch(this->SampleTime) {
+		case adtShort :  break;	//Do nothing			
+		case adtLong2 :  SET_BITS(config->CFG1, ADC_CFG1_ADLSMP_MASK); SET_BITS(config->CFG2, ADC_CFG2_ADLSTS(3)); break;
+		case adtLong6 :  SET_BITS(config->CFG1, ADC_CFG1_ADLSMP_MASK); SET_BITS(config->CFG2, ADC_CFG2_ADLSTS(2)); break; 
+		case adtLong12 : SET_BITS(config->CFG1, ADC_CFG1_ADLSMP_MASK); SET_BITS(config->CFG2, ADC_CFG2_ADLSTS(1)); break; 
+		case adtLong20 : SET_BITS(config->CFG1, ADC_CFG1_ADLSMP_MASK); SET_BITS(config->CFG2, ADC_CFG2_ADLSTS(0)); break;			
+	}	
+		
+	//ClkAsyncOut : Setup CFG2->ADACKEN
+	if(this->ClkAsyncOut)
+		SET_BITS(config->CFG2, ADC_CFG2_ADACKEN_MASK);
+	//else
+	//	CLR_BITS(config->CFG2, ADC_CFG2_ADACKEN_MASK);	
+	
+	//Setup CFG2->ADHSC
+	if(this->SampleHighSpeed)
+		SET_BITS(config->CFG2, ADC_CFG2_ADHSC_MASK);
+	//else
+	//	CLR_BITS(config->CFG2, ADC_CFG2_ADHSC_MASK);
+	
+	//SampleMuxBank : Setup CFG2->MUXSEL	
+	if(this->SampleMuxBank == admBankB) 
+		SET_BITS(config->CFG2, ADC_CFG2_MUXSEL_MASK);		
+	//else
+	//	CLR_BITS(config->CFG2, ADC_CFG2_MUXSEL_MASK);
+	
+	#if ADC_HAS_PGA
+		//PgaChopping : Setup PGA->PGACHPb
+		if(!this->PgaChopping)
+			SET_BITS(config->PGA, ADC_PGA_PGACHPb_MASK);
+		//else
+		//	CLR_BITS(_config->PGA, ADC_PGA_PGACHPb_MASK);
+			
+		//PgaLowPower : Setup PGA->PGALPb
+		if(!this->PgaLowPower)
+			SET_BITS(config->PGA, ADC_PGA_PGALPb_MASK);
+		//else
+		//	CLR_BITS(_config->PGA, ADC_PGA_PGALPb_MASK);
+
+		//PgaGain : Setup PGA->PGAG and PGA->PGAEN bits
+		//CLR_BITS(config->PGA, ADC_PGA_PGAEN_MASK | ADC_PGA_PGAG_MASK);
+		switch(this->PgaGain) {
+			case adpDisabled : break; //Do Nothing
+			case adpGainX1 : SET_BITS(config->PGA, ADC_PGA_PGAEN_MASK | ADC_PGA_PGAG(0)); break;
+			case adpGainX2 : SET_BITS(config->PGA, ADC_PGA_PGAEN_MASK | ADC_PGA_PGAG(1)); break;
+			case adpGainX4 : SET_BITS(config->PGA, ADC_PGA_PGAEN_MASK | ADC_PGA_PGAG(2)); break;
+			case adpGainX8 : SET_BITS(config->PGA, ADC_PGA_PGAEN_MASK | ADC_PGA_PGAG(3)); break;
+			case adpGainX16 : SET_BITS(config->PGA, ADC_PGA_PGAEN_MASK | ADC_PGA_PGAG(4)); break;
+			case adpGainX32 : SET_BITS(config->PGA, ADC_PGA_PGAEN_MASK | ADC_PGA_PGAG(5)); break;
+			case adpGainX64 : SET_BITS(config->PGA, ADC_PGA_PGAEN_MASK | ADC_PGA_PGAG(6)); break;
+		}
+	#else
+		config->PGA = 0;
+	#endif
+	
+	//SampleAveraging : Setup SC3->AVGE and SC3->AVGS bits
+	//CLR_BITS(config->SC3, ADC_SC3_AVGS_MASK | ADC_SC3_AVGE_MASK);	
+	switch(this->SampleAveraging) {
+		case advDisabled : break; //Do Nothing
+		case advAverage4 : SET_BITS(config->SC3, ADC_SC3_AVGE_MASK | ADC_SC3_AVGS(0)); break;
+		case advAverage8 : SET_BITS(config->SC3, ADC_SC3_AVGE_MASK | ADC_SC3_AVGS(1)); break;
+		case advAverage16 : SET_BITS(config->SC3, ADC_SC3_AVGE_MASK | ADC_SC3_AVGS(2)); break;
+		case advAverage32 : SET_BITS(config->SC3, ADC_SC3_AVGE_MASK | ADC_SC3_AVGS(3)); break;			
+	}
+
+	//SampleCont : SC3->ADCO
+	if(this->SampleCont)
+		SET_BITS(config->SC3, ADC_SC3_ADCO_MASK);
+	//else
+	//	CLR_BITS(config->SC3, ADC_SC3_ADCO_MASK);
+	
+	//TrigMode : SC2->ADTRG, SOPT7->ADCxALTTRGEN bits
+	//NB: Field defs refer to ADC0, as we only want to work with lower 7 bits here.
+	//When settings are applied, the SOPT7_TRIG byte is shifted and applied to
+	//the appropriate ADC
+	switch(this->TrigMode) {
+		case adtSoftware : { 
+			//CLR_BIT(config->SC2, ADC_SC2_ADTRG_SHIFT); 				
+			//CLR_BIT(config->SOPT7_TRIG, SIM_SOPT7_ADC0ALTTRGEN_SHIFT); 
+			break; 
+		}
+		case adtHardwarePDB : { 
+			SET_BIT(config->SC2, ADC_SC2_ADTRG_SHIFT); 
+			//CLR_BIT(config->SOPT7_TRIG, SIM_SOPT7_ADC0ALTTRGEN_SHIFT); 
+			break; 
+		}
+		case adtHardwareALT : { 
+			SET_BIT(config->SC2, ADC_SC2_ADTRG_SHIFT); 
+			SET_BIT(config->SOPT7_TRIG, SIM_SOPT7_ADC0ALTTRGEN_SHIFT); 
+			break; 
+		}
+	}
+	
+	//TrigPreSrc : SOPT7->ADCxPRETRGSEL bits
+	if(this->TrigPreSrc == adtpPreTriggerB)	
+		SET_BIT(config->SOPT7_TRIG, SIM_SOPT7_ADC0PRETRGSEL_SHIFT);		
+	//else
+	//	CLR_BIT(config->SOPT7_TRIG, SIM_SOPT7_ADC0PRETRGSEL_SHIFT);		
+	
+	//TrigAltSrc : SOPT7->ADCxTRGSEL bits
+	//NB: Field defs refer to ADC0, as we only want to work with lower 7 bits here.
+	//When settings are applied, the SOPT7_TRIG byte is shifted and applied to
+	//the appropriate ADC
+	//CLR_BITS(config->SOPT7_TRIG, SIM_SOPT7_ADC0TRGSEL_MASK);
+	SET_BITS(config->SOPT7_TRIG, SIM_SOPT7_ADC0TRGSEL((uint8)this->TrigAltSrc));	
+	
+	//SampleChannel : SC1[x]->ADCH
+	SET_BITS(config->SC1[0], ADC_SC1_ADCH(this->SampleChannel));
+	
+	//SampleIRQ : SC1[x]->AIEN
+	if(this->SampleIRQ)
+		SET_BITS(config->SC1[0], ADC_SC1_AIEN_MASK);
+	//else
+	//	CLR_BITS(config->SC1[0], ADC_SC1_AIEN_MASK);
+	
+}
+
+//==============================================================================
+//CAdcDevice
+//==============================================================================
+//Initalise static memory of an array of pointers that holds the ADC Port object
+//bound to each IRQ
+PAdcDevice CAdcDevice::AdcDevice[ADC_PERIPHERALS] = { NULL };
+
+/*!-----------------------------------------------------------------------------
+Constructor for the ADC port
+*/
+CAdcDevice::CAdcDevice(uint8 id)
+{
+	//Store the ADC port to connect to
+	_adcId = id;
+	
+	//First get the pointer to the ADC hardware to use
+	//and turn on the relevant ADC hardware clock
+	switch(_adcId) {
+			case 0 : { _adc = ADC0; break; }
+			case 1 : { _adc = ADC1; break; }
+		#if ADC_PERIPHERALS > 2
+			case 2 : { _adc = ADC2; break; }
+		#endif
+		#if ADC_PERIPHERALS > 3
+			case 3 : { _adc = ADC3; break; }
+		#endif
+		default : { _adc = NULL; break; }
+	}
+		
+	//Enable the module clock and interrupts (the module can be disabled buy the ADCH(31) setting in ADC->SC1[0])
+	this->SetSysClkEn(true);
+	this->SetNvicIRQ(true);
+	
+	if(_adc) {
+		//Clear the conversion interrupt flag and disabled the ADC
+		_adc->SC1[0] = ADC_SC1_ADCH(ADC_CHAN_DISABLED);
+		
+		//Connect the low level IRQ handler
+		CAdcDevice::AdcDevice[_adcId] = this;
+	}
+	
+	//Initially mark no ADC device as connected
+	_channel = NULL;	
+	
+	//Clear the calibration state
+	_calibrated = false;	
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the ADC port
+*/
+CAdcDevice::~CAdcDevice()
+{
+	//Disconnect any connected ADC port
+	this->Disconnect();
+	
+	if(_adc) {
+		//Remove the low level IRQ handler
+		CAdcDevice::AdcDevice[_adcId] = NULL;
+		
+		//Disable the system clock and NVIC IRQ for the ADC
+		this->SetNvicIRQ(false);
+		this->SetSysClkEn(false);		
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is called when the port has been opened to run a self-calibration
+on the ADC selected by the port variable.
+@result True if the calibration completed successfully
+*/
+bool CAdcDevice::Calibrate()
+{
+	//Clear the calibrated flag
+	_calibrated = false;
+	
+	if(_adc) {
+		//Disable interrupts
+		this->SetNvicIRQ(false);		
+		
+		//Stop the currently connected channel from sampling
+		if(_channel)
+			_channel->Stop();			
+		
+		//Backup the ADC current configuration
+		TAdcConfig cfgTmp;
+		this->GetConfig(&cfgTmp);
+				
+		//Shut down the ADC (and stop any conversion in progress)
+		_adc->SC1[0] = ADC_SC1_ADCH(ADC_CHAN_DISABLED);		
+		
+		// Now calibrate...	
+		_adc->SC2 &= ~ADC_SC2_ADTRG_MASK;
+		_adc->SC3 &= ~ADC_SC3_ADCO_MASK;
+		_adc->SC3 &= ~ADC_SC3_AVGS(3);
+		
+		// Set the calibration flag
+		_adc->SC3 |= ADC_SC3_CAL_MASK;
+		
+		// Wait until the calibration conversion completes
+		while (!(_adc->SC1[0] & ADC_SC1_COCO_MASK)) { }
+		
+		// If calibration succeeded, compute calibration constants.
+		if(IS_BIT_CLR(_adc->SC3, ADC_SC3_CALF_SHIFT)) {					
+			uint16 cal = 0;
+			
+			// Sum up the plus side calibration results
+			cal += _adc->CLP0;
+			cal += _adc->CLP1;
+			cal += _adc->CLP2;
+			cal += _adc->CLP3;
+			cal += _adc->CLP4;
+			cal += _adc->CLPS;
+			// Divide by two as per the reference manual
+			cal /= 2;
+			// Set the MSB
+			cal |= 0x8000;
+			// Store the result into the plus-side gain calibration register
+			_adc->PG = ADC_PG_PG(cal);
+			
+			// Sum up the minus side calibration results
+			cal = _adc->CLM0;
+			cal += _adc->CLM1;
+			cal += _adc->CLM2;
+			cal += _adc->CLM3;
+			cal += _adc->CLM4;
+			cal += _adc->CLMS;
+			// Divide by two as per the reference manual
+			cal /= 2;
+			// Set the MSB
+			cal |= 0x8000;
+			// Store the result into the minus-side gain calibration register
+			_adc->MG = ADC_MG_MG(cal);
+			
+			// Clear the calibration flag
+			_adc->SC3 &= ~ADC_SC3_CAL_MASK;
+			
+			//Indicate the ADC is now calibrated
+			_calibrated = true;	
+		}		
+		
+		//Restore the current ADC configuration
+		this->SetConfig(&cfgTmp);
+		
+		//Re-enable interrupts
+		this->SetNvicIRQ(true);		
+	}
+	
+	//Return the calibration state
+	return _calibrated;	
+}
+
+/*!-----------------------------------------------------------------------------
+Function that an AdcChannel calls to connect itself to the port
+*/
+bool CAdcDevice::Connect(PAdcChannelBase channel)
+{
+	if(_adc && (_channel == NULL)) {
+		//Store the channel object being connected
+		_channel = channel;					
+		return true;
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that disconnects any currently connected AdcChannel
+*/
+bool CAdcDevice::Disconnect()
+{
+	if(_channel) {		
+		//Close (and Stop) the channel if it is open
+		if(_channel->IsOpen())
+			_channel->Close();		
+		
+		//Clear down the device pointer
+		_channel = NULL;
+		return true;
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is called to raise the ports IRQ event, which will in-turn raise
+the currently connected ADC device's OnIRQ event.
+*/
+void CAdcDevice::DoIRQ()
+{
+	if(_channel) {
+		//Call the AdcChannel's protected DoIRQ function - allowed by a defined friendship in CAdcChannelBase's definition
+		_channel->DoIRQ();
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that populates an ADC calibration structure with the current ADC
+calibration coefficients
+@param[out] cal Pointer to the calibration structure to populate
+@result True if the calibration was populated, false if the ADC isn't currently calibrated
+*/
+bool CAdcDevice::GetCalibration(PAdcCalibration cal)
+{
+	if(_adc && _calibrated) {
+		cal->OFS  = _adc->OFS;
+		cal->PG   = _adc->PG;
+		cal->MG   = _adc->MG;
+		cal->CLPD = _adc->CLPD; 
+		cal->CLPS = _adc->CLPS;
+		cal->CLP4 = _adc->CLP4;
+		cal->CLP3 = _adc->CLP3; 
+		cal->CLP2 = _adc->CLP2; 
+		cal->CLP1 = _adc->CLP1;
+		cal->CLP0 = _adc->CLP0;
+		cal->CLMD = _adc->CLMD;
+		cal->CLMS = _adc->CLMS;
+		cal->CLM4 = _adc->CLM4;
+		cal->CLM3 = _adc->CLM3;
+		cal->CLM2 = _adc->CLM2;
+		cal->CLM1 = _adc->CLM1;
+		cal->CLM0 = _adc->CLM0;  
+		return true;
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns a configuration structure for the ADC
+@param[out] config Pointer to the configuration structure that should be populated
+@result True if the configuration structure was populated
+*/
+bool CAdcDevice::GetConfig(PAdcConfig config)
+{
+	if(_adc) {
+		//Read the ADC configuration
+		config->CFG1 = _adc->CFG1;
+		config->CFG2 = _adc->CFG2;
+		config->CV1 = _adc->CV1;
+		config->CV2 = _adc->CV2;
+		config->SC1[0] = _adc->SC1[0];
+		config->SC1[1] = _adc->SC1[1];
+		config->SC2 = _adc->SC2;
+		config->SC3 = _adc->SC3;
+		#if ADC_HAS_PGA
+			config->PGA = _adc->PGA;
+		#else
+			config->PGA = 0;
+		#endif
+		
+		//Read the ADC trigger settings from the system options register
+		switch(_adcId) {
+			case 0 : { config->SOPT7_TRIG = (uint8)(SIM->SOPT7 & 0xFF); break; }
+			case 1 : { config->SOPT7_TRIG = (uint8)((SIM->SOPT7 >> 8) & 0xFF); break; }
+			case 2 : { config->SOPT7_TRIG = (uint8)((SIM->SOPT7 >> 16) & 0xFF); break; }
+			case 3 : { config->SOPT7_TRIG = (uint8)((SIM->SOPT7 >> 24) & 0xFF); break; }
+			default: { config->SOPT7_TRIG = 0; break; }
+		}
+					
+		return true;
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns a pointer to the currently connected ADC device, or
+NULL if no device is connected to the port
+*/
+PAdcChannelBase CAdcDevice::GetChannel()
+{
+	return _channel;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns if the ADC is busy
+@result True if a conversion is in progress, otherwise false.
+*/
+bool CAdcDevice::IsBusy()
+{
+	if(_adc)
+		return IS_BIT_SET(_adc->SC2, ADC_SC2_ADACT_SHIFT);
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns if the ADC conversion is complete
+@result True if a conversion is complete, otherwise false.
+*/
+bool CAdcDevice::IsComplete()
+{
+	if(_adc)
+		return IS_BIT_SET(_adc->SC1[0], ADC_SC1_COCO_SHIFT);
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CAdcDevice::IsCalibrated()
+{
+	return _calibrated;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the ADC's calibration coefficients from the specified
+calibration structure
+*/
+void CAdcDevice::SetCalibration(PAdcCalibration cal)
+{
+	if(_adc) {
+		_adc->OFS  = cal->OFS;
+		_adc->PG   = cal->PG;
+		_adc->MG   = cal->MG;
+		_adc->CLPD = cal->CLPD; 
+		_adc->CLPS = cal->CLPS;
+		_adc->CLP4 = cal->CLP4;
+		_adc->CLP3 = cal->CLP3; 
+		_adc->CLP2 = cal->CLP2; 
+		_adc->CLP1 = cal->CLP1;
+		_adc->CLP0 = cal->CLP0;
+		_adc->CLMD = cal->CLMD;
+		_adc->CLMS = cal->CLMS;
+		_adc->CLM4 = cal->CLM4;
+		_adc->CLM3 = cal->CLM3;
+		_adc->CLM2 = cal->CLM2;
+		_adc->CLM1 = cal->CLM1;
+		_adc->CLM0 = cal->CLM0;  
+		_calibrated = true;
+	}	
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns a configuration structure for the ADC
+@param[in] config Pointer to the configuration structure that should be applied
+*/
+void CAdcDevice::SetConfig(PAdcConfig config)
+{
+	if(_adc) {
+		//Write the ADC configuration
+		_adc->SC1[0] = config->SC1[0] | ADC_SC1_ADCH(ADC_CHAN_DISABLED);	//Setup for disabled - doesn't start a conversion on writing (and stops any in progress)
+		_adc->SC1[1] = config->SC1[1] | ADC_SC1_ADCH(ADC_CHAN_DISABLED);	//Setup for disabled - doesn't start a conversion on writing (and stops any in progress)		
+		_adc->CFG1 = config->CFG1;
+		_adc->CFG2 = config->CFG2;
+		_adc->CV1 = config->CV1;
+		_adc->CV2 = config->CV2;
+		_adc->SC2 = config->SC2;
+		_adc->SC3 = config->SC3;
+		#if ADC_HAS_PGA
+			_adc->PGA = config->PGA;
+		#endif
+		
+		//Write the ADC trigger settings to the system options register
+		uint32 mask;
+		uint32 trig;
+		switch(_adcId) {
+			case 0 : { mask = 0x000000ff; trig = config->SOPT7_TRIG; break; }; 
+			case 1 : { mask = 0x0000ff00; trig = config->SOPT7_TRIG << 8; break; }; 
+			case 2 : { mask = 0x00ff0000; trig = config->SOPT7_TRIG << 16; break; }; 
+			case 3 : { mask = 0xff000000; trig = config->SOPT7_TRIG << 24; break; }; 
+			default : { mask = 0; trig = 0; }			
+		}
+		CLR_BITS(SIM->SOPT7, mask);
+		SET_BITS(SIM->SOPT7, trig);		
+	}	
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CAdcDevice::SetNvicIRQ(bool state)
+{
+	if(_adc) {
+		if(state) {
+			//Enable the NVIC IRQ
+			switch(_adcId) {
+					case 0 : { NVIC_EnableIRQ(ADC0_IRQn); break; }
+					case 1 : { NVIC_EnableIRQ(ADC1_IRQn); break; }
+				#if ADC_PERIPHERALS > 2
+					case 2 : { NVIC_EnableIRQ(ADC2_IRQn); break; }
+				#endif
+				#if ADC_PERIPHERALS > 3
+					case 3 : { NVIC_EnableIRQ(ADC3_IRQn); break; }
+				#endif
+			}
+		}
+		else {
+			//Disable the NVIC IRQ
+			switch(_adcId) {
+					case 0 : { NVIC_DisableIRQ(ADC0_IRQn); break; }
+					case 1 : { NVIC_DisableIRQ(ADC1_IRQn); break; }
+				#if ADC_PERIPHERALS > 2
+					case 2 : { NVIC_DisableIRQ(ADC2_IRQn); break; }
+				#endif
+				#if ADC_PERIPHERALS > 3
+					case 3 : { NVIC_DisableIRQ(ADC3_IRQn); break; }
+				#endif
+			}
+		}
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CAdcDevice::SetSysClkEn(bool state)
+{
+	if(_adc) {
+		if(state) {
+			//Enable the System Clock to the ADC module
+			switch(_adcId) {
+					case 0 : { SET_BIT(SIM->SCGC6, SIM_SCGC6_ADC0_SHIFT); break; }
+					case 1 : { SET_BIT(SIM->SCGC3, SIM_SCGC3_ADC1_SHIFT); break; }
+				#if ADC_PERIPHERALS > 2
+					case 2 : { SET_BIT(SIM->SCGC6, SIM_SCGC6_ADC2_SHIFT); break; }
+				#endif
+				#if ADC_PERIPHERALS > 3
+					case 3 : { SET_BIT(SIM->SCGC3, SIM_SCGC3_ADC3_SHIFT); break; }
+				#endif
+			}
+		}
+		else {
+			//Disable the System Clock to the ADC module
+			switch(_adcId) {
+					case 0 : { CLR_BIT(SIM->SCGC6, SIM_SCGC6_ADC0_SHIFT); break; }
+					case 1 : { CLR_BIT(SIM->SCGC3, SIM_SCGC3_ADC1_SHIFT); break; }
+				#if ADC_PERIPHERALS > 2
+					case 2 : { CLR_BIT(SIM->SCGC6, SIM_SCGC6_ADC2_SHIFT); break; }
+				#endif
+				#if ADC_PERIPHERALS > 3
+					case 3 : { CLR_BIT(SIM->SCGC3, SIM_SCGC3_ADC3_SHIFT); break; }
+				#endif
+			}
+		}
+	}
+}
+
+//==============================================================================
+//CAdcChannelBase
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor for the ADC device
+*/
+CAdcChannelBase::CAdcChannelBase(PAdcDevice device)
+	: OnIRQ()
+{
+	//Store the pointer to the ADC Port to connect to
+	_device = device;
+	_open = false;	
+		
+	//Get access to the AdcDevices hardware registers
+	_adcReg = _device->_adc;
+		
+	//Inialise ADC variables to defaults
+	TAdcSettings settings;	
+	this->SetSettings(&settings);
+	
+	//Indicate the port is stopped and closed
+	this->Close();
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the ADC device
+*/
+CAdcChannelBase::~CAdcChannelBase()
+{
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CAdcChannelBase::Close()
+{
+	//Stop any sampling in progress
+	this->Stop();
+		
+	if(_open) {
+		//Indicate the port is closed
+		_open = false;	
+	
+		//Disconnect the port from the ADC device		
+		_device->Disconnect();		
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is called to raise the device's OnIRQ event
+*/
+void CAdcChannelBase::DoIRQ()
+{
+	//Raise the IRQ event			
+	OnIRQ.Call();
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns a copy of the Config registers structure;
+*/
+TAdcConfig CAdcChannelBase::GetConfig()
+{
+	return _config;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns if the ADC is busy
+@result True if the port is open and a conversion (or continuous mode) is in progress, otherwise false.
+*/
+bool CAdcChannelBase::IsBusy()
+{	
+	if(_open)
+		return IS_BIT_SET(_adcReg->SC2, ADC_SC2_ADACT_SHIFT);	
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns if a conversion is complete
+*/
+bool CAdcChannelBase::IsComplete()
+{
+	if(_open)
+		return IS_BIT_SET(_adcReg->SC1[0], ADC_SC1_COCO_SHIFT);
+	else 
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CAdcChannelBase::IsOpen()
+{
+	return _open;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is called to open a connection to the Adc Device from the channel.
+Once opened, the channel can perform sampling operations.
+*/
+bool CAdcChannelBase::Open()
+{
+	if(_device && _device->_adc && !_open) {
+		//Attempt to connect to the Channel to the Adc Device
+		_open = _device->Connect(this);		
+		
+		if(_open) {
+			//Apply the current configuration parameters to the ADC device
+			//NB: AdcDevice keeps the SysClk and NvicIRQ permanently enabled
+			_device->SetConfig(&_config);
+		}
+		
+		return _open;
+	}	
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the Channels source input
+*/
+void CAdcChannelBase::SetChannel(uint8 channel)
+{
+	LOAD_BITS(_config.SC1[0], ADC_SC1_ADCH_MASK, ADC_SC1_ADCH(channel));	
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the Channels Config register settings
+*/
+void CAdcChannelBase::SetConfig(PAdcConfig value)
+{
+	if(!_open) {
+		_config = *value;
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that allows interupts to be enabled of disabled for the ADC
+NB: This value can be changed at any time, but changes will only be applied
+when the ADC is next Opened, or a Start command issued.
+*/
+void CAdcChannelBase::SetInterrupts(bool value)
+{	
+	if(value)
+		SET_BIT(_config.SC1[0], ADC_SC1_AIEN_SHIFT);
+	else
+		CLR_BIT(_config.SC1[0], ADC_SC1_AIEN_SHIFT);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that calculates and stores the Channels Config register settings from the
+specified settings structure.
+*/
+void CAdcChannelBase::SetSettings(PAdcSettings value)
+{
+	if(!_open) {
+		value->MakeConfig(&_config);
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function called to start the ADC. If continuous conversions are enabled (see
+the SetSettings and SetConfig functions), then the ADC will continue performing
+continuous conversions until the Stop command is issed.
+Interrupts are optional, and set through the Settings and Config commands.
+*/
+bool CAdcChannelBase::Start()
+{
+	if(_open) {		
+		//Start an ADC conversion for the specified settings and channel
+		_adcReg->SC1[0] = _config.SC1[0];				
+		return true;
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CAdcChannelBase::Start(uint8 channel)
+{
+	if(_open) {		
+		//Set the sample channel
+		this->SetChannel(channel);		
+		//Start sampling
+		return this->Start();
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CAdcChannelBase::StartCont()
+{
+	if(_open) {	
+		//Set the continuous sampling flag
+		SET_BIT(_config.SC3, ADC_SC3_ADCO_SHIFT);
+		_adcReg->SC3 = _config.SC3;
+		//Start an ADC conversion for the specified settings and channel
+		_adcReg->SC1[0] = _config.SC1[0];				
+		return true;
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CAdcChannelBase::StartCont(uint8 channel)
+{
+	if(_open) {						
+		//Set the sample channel
+		this->SetChannel(channel);
+		//Start sampling
+		return this->StartCont();
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CAdcChannelBase::StartSingle()
+{
+	if(_open) {	
+		//Clear the continuous sampling flag
+		CLR_BIT(_config.SC3, ADC_SC3_ADCO_SHIFT);
+		_adcReg->SC3 = _config.SC3;
+		//Start an ADC conversion for the specified settings and channel
+		_adcReg->SC1[0] = _config.SC1[0];				
+		return true;
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CAdcChannelBase::StartSingle(uint8 channel)
+{
+	if(_open) {						
+		//Set the sample channel
+		this->SetChannel(channel);
+		//Start sampling
+		return this->StartSingle();
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CAdcChannelBase::StartSingleWait()
+{
+	if(_open) {	
+		//Start a single conversion
+		this->StartSingle();		
+		//Wait until the conversion is complete
+		while(IS_BIT_CLR(_adcReg->SC1[0], ADC_SC1_COCO_SHIFT)) { }		
+				
+		return true;
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CAdcChannelBase::StartSingleWait(uint8 channel)
+{
+	if(_open) {						
+		//Set the sample channel
+		this->SetChannel(channel);
+		//Start sampling
+		return this->StartSingleWait();
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is called to stop a sequence of continuous conversions initiated
+by the StartCont function.
+*/
+void CAdcChannelBase::Stop()
+{
+	//Only stop the port if its open and running
+	if(_open) {
+		//Clear the conversion interrupt flag and disabled the ADC
+		//This will also stop any conversion in progress, and shut the ADC down.
+		_adcReg->SC1[0] = ADC_SC1_ADCH(ADC_CHAN_DISABLED);		
+	}	
+}
+
+//==============================================================================
+//CAdcChannel
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor for the ADC channel
+*/
+CAdcChannel::CAdcChannel(PAdcDevice device)
+	:  CAdcChannelBase(device)
+{		
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the ADC channel
+*/
+CAdcChannel::~CAdcChannel()
+{
+}
+
+/*!-----------------------------------------------------------------------------
+Function that reads a single sample from the receive buffer.
+@param result Reference to where the read value from the buffer is stored
+@result True if data was read from the buffer was new (previously unread) data. False if the data has already been read
+*/
+bool CAdcChannel::Read(puint16 result)
+{
+	if(_open) {
+		*result = _adcReg->R[0];
+		return true;
+	}
+	return
+		false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that reads and blocks until a new sample is ready for reading from the ADC
+@result The ADC conversion result
+*/
+uint16 CAdcChannel::ReadWait()
+{	
+	//Don't allow data to be read if the port is closed
+	if(_open) {
+		//Loop until the conversion is complete
+		while(!this->IsComplete()) { }
+		//Return the conversion value
+		return _adcReg->R[0];
+	}
+	else
+		return 0;	
+}
+
+//==============================================================================
+//CAdcFifoChannel
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor for the buffered ADC channel
+*/
+CAdcFifoChannel::CAdcFifoChannel(PAdcDevice device, uint32 bufSize)
+	:  CAdcChannelBase(device)
+{	
+	//Create a data buffer to hold results in
+	_resultBuf = new CUInt16FifoBuffer(bufSize);	
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the buffered ADC channel
+*/
+CAdcFifoChannel::~CAdcFifoChannel()
+{
+	//Destroy resources
+	delete _resultBuf;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is called to raise the device's OnIRQ event
+*/
+void CAdcFifoChannel::DoIRQ()
+{
+	if(_open) {
+		//Check a conversion has completed
+		//if(_adc->SC1[0] & ADC_SC1_COCO_MASK) {
+			//Read the result and store it
+			uint16 data = _adcReg->R[0];
+		
+			//If the buffer isn't full, put the sample data onto it
+			if(!_resultBuf->IsFull()) {
+				_resultBuf->Push(data);
+			}
+					
+			//Raise the IRQ event			
+			OnIRQ.Call();
+		//}
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns how many samples are on the buffer
+*/
+uint32 CAdcFifoChannel::GetBufferCount()
+{
+	//As an interrupt writes to the buffer, protect the read
+	CLI;
+	uint32 result = _resultBuf->GetCount();
+	SEI;
+	return result;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+uint32 CAdcFifoChannel::GetBufferSize()
+{
+	return _resultBuf->GetCapacity();
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is called to open a connection to the Adc Device from the channel.
+Once opened, the channel can perform sampling operations.
+*/
+bool CAdcFifoChannel::Open()
+{	
+	//Class the base open method to make the connection	
+	bool success = base::Open();
+	
+	//If the port was opened, clear the buffer
+	if(success) {
+		_resultBuf->Clear();
+	}
+	
+	return success;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that reads a single sample from the receive buffer.
+@param result Pointer to where the read value from the buffer is stored
+@result True if data was read from the buffer, false if data wasn't present
+*/
+bool CAdcFifoChannel::Read(puint16 result)
+{
+	//Get the byte from the buffer	
+	CLI;
+	bool success = _resultBuf->Pop(result);
+	SEI;	 
+	return success;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that reads a single sample from the receive buffer. If no sample is present
+the function will block until the ADC conversion occurs
+@result The read byte from the buffer
+*/
+uint16 CAdcFifoChannel::ReadWait()
+{
+	uint16 data;
+	
+	//Don't allow data to be read if the port is closed
+	if(!_open) 
+		return 0;
+	
+	//If the buffer is empty, then loop until we receive a byte
+	//Do this in an interrupt safe way, so the buffer cannot be accessed simultaneously
+	bool wait = true;
+	while(wait) {
+		CLI;
+		wait = _resultBuf->IsEmpty();				
+		SEI;	
+		//### Perhaps need a Watchdog reset here!
+	}
+	
+	//Store the byte to the buffer
+	CLI;
+	_resultBuf->Pop(&data);
+	SEI;
+	 
+	return data;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that reads a specified number of samples from the receive buffer. If
+the required number of bytes arn't present, the function will block until they
+have been received
+@param pBuf Pointer to the buffer where the received samples should be copied
+@param count The number of bytes to read
+*/
+void CAdcFifoChannel::ReadWait(puint16 pBuf, uint32 count)
+{
+	//Don't allow data to be read if the port is closed
+	if(!_open) 
+		return;	
+	
+	//Read the requested number of bytes
+	for(uint32 i = 0; i < count; i++) {
+		*pBuf = this->ReadWait();
+		pBuf++;
+	}
+}
+		
+/*!-----------------------------------------------------------------------------
+*/
+void CAdcFifoChannel::SetBufferSize(uint32 value)
+{
+	if(!_open) {
+		_resultBuf->SetCapacity(value);
+	}
+}
+
+//==============================================================================
+//CAdcFilteredChannel
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor for the buffered ADC channel
+*/
+CAdcFilteredChannel::CAdcFilteredChannel(PAdcDevice device)
+	:  CAdcChannelBase(device)
+{	
+	_fltResult = 0.0;
+	_fltReset = true;
+	_fltScalar = 1.0;
+	_fltSmoothing = 1.0;
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the buffered ADC channel
+*/
+CAdcFilteredChannel::~CAdcFilteredChannel()
+{	
+}
+
+/*!-----------------------------------------------------------------------------
+Function that computes the new first-order filter value, from the passed in value
+@param value The new (unscaled) value to pass through the filter
+*/
+double CAdcFilteredChannel::CalcFilter(uint16 value)
+{
+	//Apply the value scalar (i.e. convert raw ADC counts to another
+	//linear system)
+	double fltNew = (double)value * _fltScalar;
+	
+	if(_fltReset) {
+		//If the filter has been reset, then just load the value
+		_fltResult = fltNew;
+		_fltReset = false;
+	}
+	else {
+		//Compute the new first-order filtered value using the smoothing factor
+		double _fltOld = _fltResult;
+		_fltResult = ((fltNew - _fltOld) / _fltSmoothing) + _fltOld;		
+	}
+	return _fltResult;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is called to raise the device's OnIRQ event
+*/
+void CAdcFilteredChannel::DoIRQ()
+{
+	if(_open) {
+		//Check a conversion has completed
+		//if(_adc->SC1[0] & ADC_SC1_COCO_MASK) {
+			//Read the result and store it
+			uint16 data = _adcReg->R[0];
+		
+			//Put the value into the filter
+			this->CalcFilter(data);
+					
+			//Raise the IRQ event			
+			OnIRQ.Call();
+		//}
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+double CAdcFilteredChannel::GetScalar()
+{
+	return _fltScalar;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+double CAdcFilteredChannel::GetSmoothing()
+{
+	return _fltSmoothing;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that reads the filter value
+@param result Pointer to where the read value is stored
+@result True if data was read
+*/
+bool CAdcFilteredChannel::Read(pdouble result)
+{	
+	CLI;
+	*result = _fltResult;
+	SEI;	 
+	return true;
+}	
+
+/*!-----------------------------------------------------------------------------
+Function that resets the first order filter, so that it loads directly the next
+sampled value, rather then averaging it
+*/
+void CAdcFilteredChannel::Reset()
+{
+	_fltReset = true;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CAdcFilteredChannel::SetSmoothing(double value)
+{
+	_fltSmoothing = value;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CAdcFilteredChannel::SetScalar(double value)
+{
+	_fltScalar = value;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CAdcFilteredChannel::StartSingleWait()
+{
+	//Call the base "Start" function
+	bool success = base::StartSingleWait();
+	
+	//If the conversion completed, then filter the result
+	if(success) {		
+		//Read the result and store it
+		uint16 data = _adcReg->R[0];
+	
+		//Put the value into the filter
+		this->CalcFilter(data);
+	}
+	
+	return success;
+}
+
+//==============================================================================

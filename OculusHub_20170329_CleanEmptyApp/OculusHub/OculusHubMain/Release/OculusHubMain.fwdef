@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FirmwareDef>
+	<Config />	
+	<Targets>
+		<Target 
+			Device="0"
+			Name="Oculus Hub Application"
+			Section="1" 
+			DataFormat="2" 
+			PartNumber="01208" 
+			PartRevMin="0" 
+			PartRevMax="0" 
+			SerialNumber="000000" 
+			Key="u86TzXFTDci1I0sW" 
+			BlockSize="64" 
+			Source="OculusHubMain.bin" 
+		/>
+	</Targets>
+</FirmwareDef>

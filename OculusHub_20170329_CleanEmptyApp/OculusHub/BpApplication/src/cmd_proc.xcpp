@@ -1,0 +1,536 @@
+#include "cmd_proc.hpp"
+
+//==============================================================================
+//Class Implementation...
+//==============================================================================
+//CCmdMsg
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor that initialises a message with the specified buffer size
+*/
+CCmdMsg::CCmdMsg(uint16 size) : base(size)
+{
+}
+
+/*!-----------------------------------------------------------------------------
+Constructor that initialises the message with the specified command code and
+contents of the specified buffer
+*/
+CCmdMsg::CCmdMsg(TCmdId id, puint8 data, uint16 len) : base()
+{
+	//Initialise the message buffer
+	_buf = NULL;
+	this->Init(1 + len);	//Add one byte for the command id.
+	//Populate the command
+	this->AddUint8(id);
+	//Populate the message contents
+	this->AddData(data, len);
+}
+
+//==============================================================================
+//CCmdProc
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor for the param list
+*/
+CCmdProc::CCmdProc()
+{
+	//Setup the service parameters for continuous operation
+	base::SetServiceInterval(0);
+
+	//Initialise message decoder
+	_decodeEn = false;
+	_decodeMsg = new CCmdMsg(CMD_BUF_LEN);
+
+	//Setup initial variables
+	_uart = NULL;
+	_rxUseCsum = true;
+	_rxIgnoreBadChars = false;
+	_rxUseDeviceAddr = false;
+	_deviceAddr = 0;
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the Service - see DoDestroy()
+
+CCmdProc::~CCmdProc()
+{
+}
+*/
+
+/*!-----------------------------------------------------------------------------
+Function that computes the checksum value for the specified message (which
+should include the message id code, but not an existing checksum).
+The CRC16-IBM polynomial is used.
+*/
+uint16 CCmdProc::CalcMsgChecksum(PCmdMsg msg, uint16 csumInit)
+{
+	uint16 csum = 0;
+	uint16 len = msg->GetLength();
+	puint8 buf = msg->GetBufPtr();
+	csum = CCrc16::Calc(buf, 0, len, csumInit);
+	return csum;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is called to decode a received message, processing each character
+at a time.
+@param ch	The character to process
+*/
+void CCmdProc::Decode(uint8 ch)
+{
+	uint8 hex;	//Temporary values where hex characters are converted to binary values
+
+	if(ch == CMD_RX_SYNC_CHAR) {
+		//Start decoding a new message
+		_decodeEn = true;
+		_decodeNibble = 0;
+		_decodeValue = 0;
+		_decodeAddr = -1;
+		_decodeMsg->Clear();
+	}
+	else if(_decodeEn) {
+		//Decoding is in progress, so handle the character
+		if(ch == 13) {
+			//Ignore <CR> characters
+		}
+		else if(ch == 10) {
+			//Process the command on a<LF> (Line-Feed), as this is the last character in
+			//the CR+LF sequence on half-duplex.
+			uint16 csumRx;
+			uint16 csumCalc;
+			_decodeEn = false;
+
+			//Validate and process the message...
+			if(_rxUseCsum) {
+				//If using Rx command checksums, then obtain and validate...
+				//Remove the received checksum from the end of the buffer
+				csumRx = _decodeMsg->PopUint16();
+				//Now calculate the checksum of what we received
+				csumCalc = this->CalcMsgChecksum(_decodeMsg);
+			}
+			else {
+				//If we're not using Rx command checksums, set both to 0 so we always execute...
+				csumRx = 0;
+				csumCalc = 0;
+			}
+
+			if(csumRx == csumCalc) {
+				//The checksums match, so execute
+				this->Execute(_decodeMsg);
+			}
+			else {
+				//The checksums do not match, so raise an error
+				this->SendError(CST_CMD_CSUM_ERROR, 0);
+			}
+		}
+		else if(!CConversion::HexCharToUint8(ch, &hex)) {
+			//An invalid hex char was received, so abort decoding
+			if(!_rxIgnoreBadChars) {
+				_decodeEn = false;
+				this->SendError(CST_CMD_CHAR_ERROR, 0);
+			}
+		}
+		else if(_decodeNibble == 0) {
+			//A valid Hex char was received
+			//Store the first hex pair char - the upper nibble
+			_decodeValue = hex << 4;
+			_decodeNibble = 1;
+		}
+		else {
+			//A valid Hex char was received
+			//Store the second hex pair char - the lower nibble
+			_decodeValue |= hex;
+			_decodeNibble = 0;
+
+			//Store the first byte as the device address if its still currently -1
+			if(_decodeAddr < 0)
+				_decodeAddr = _decodeValue;
+
+			//Store the complete byte on the buffer
+			if(!_decodeMsg->AddUint8(_decodeValue)) {
+				//The buffer size has overflowed, so abort decoding
+				_decodeEn = false;
+				this->SendError(CST_CMD_OVERFLOW_ERROR, 0);
+			}
+		}
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function called when the service is being destroyed
+*/
+void CCmdProc::DoDestroy()
+{
+	//Free up message buffer
+	delete _decodeMsg;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is called when the Command Processor is serviced
+*/
+bool CCmdProc::DoService(bool timerEvent)
+{
+	//See if any characters have been received
+	if(_uart) {
+		//Process each character on the buffer
+		while(_uart->GetRxBufferCount() > 0) {
+			//Get the character from the buffer
+			char ch = (char)_uart->ReadByte();
+			//Pass the character to the message decoder
+			this->Decode(ch);
+		}
+	}
+
+	return true;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is called when the Command Processor is sucessfully started
+*/
+bool CCmdProc::DoServiceStart()
+{
+	if(_uart) {
+		//Enable the Shells' UART for output
+		//_uart->Open();
+
+		//Reset the command decoder variables
+		_decodeEn = false;
+		_decodeNibble = 0;
+		_decodeValue = 0;
+
+		return true;
+	}
+	else
+		return false;
+}
+
+/*!-----------------------------------------------------------------------------
+Funciton that is called when the Command Processor is stopped
+*/
+void CCmdProc::DoServiceStop()
+{
+	//Disable message decoding
+	_decodeEn = false;
+
+	//Close the UART
+	/*
+	if(_uart) {
+		_uart->Flush();	//Wait for characters to be transmitted
+		_uart->Close();
+	}
+	*/
+}
+
+/*!-----------------------------------------------------------------------------
+Function that executes the command on the specified buffer.
+The command code is the first byte on the buffer, followed by the data bytes.
+No checksum should be included on the buffer.
+When the execute function calls the appropriate delegate functions handler
+registers for the message, the message buffer read pointer will be setup to
+point to the first byte of data AFTER the message command code.
+@param msg	Pointer to the message buffer to execute
+*/
+void CCmdProc::Execute(PCmdMsg msg)
+{
+	//Create the execute params
+	TCmdProcExecute params;
+
+	//Determine the minimum number of bytes this message must have
+	uint16 lenMin = (_rxUseDeviceAddr) ? 2 : 1;
+
+	if(!msg || (msg->GetLength() < lenMin)) {
+		//The buffer must contain at least a command (and optional device address)
+		this->SendError(CST_CMD_LENGTH_ERROR, 0);
+	}
+	else {
+		//Set the message reader to the first received byte
+		msg->SetReadIdx(0);
+
+		//If the command processor should use device addressing, then get the address byte and validate it
+		uint8 addr = _deviceAddr;
+		if(_rxUseDeviceAddr)
+			msg->ReadUint8(&addr, 0);
+
+		//Execute the command if the device address is valid
+		if(addr == _deviceAddr) {
+			//Get the CID command byte
+			TCmdId id;
+			msg->ReadUint8(&id, 0);
+
+			//Populate the message executions params
+			params.CmdProc = this;
+			params.Msg = msg;
+			params.Id = id;
+			params.Handled = false;		//The handling command should set this to true
+
+			//Call the commands delegate function to execute it
+			this->OnExecute.Call(&params);
+
+			//If the command isn't handled, then report it
+			if(!params.Handled) {
+				this->SendError(CST_CMD_ID_ERROR, id);	//Add the command code
+			}
+		}
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CCmdProc::Execute(TCmdId id)
+{
+	//Make up a command buffer to execute, containing just the command
+	CCmdMsg msg(id, NULL, 0);
+	//Execute the buffer
+	this->Execute(&msg);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CCmdProc::Execute(TCmdId id, puint8 data, uint16 len)
+{
+	//Make up a command message to execute, containing the command and buffer
+	CCmdMsg msg(id, data, len);
+	//Execute the buffer
+	this->Execute(&msg);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+uint8 CCmdProc::GetDeviceAddr()
+{
+	return _deviceAddr;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns a pointer to the UART being used by the command processor
+*/
+PComUart CCmdProc::GetUart()
+{
+	return _uart;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that implements a PrintF like capability to write text to the uart
+output
+*/
+void CCmdProc::Print(const string str, ...)
+{
+	//Initialise the arguments list
+	va_list args;
+	va_start(args, str);
+	//Call the print function for the arguments list
+	this->Print(str.c_str(), args);
+	//Tidy up
+	va_end(args);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that implements a PrintF like capability to write text to the uart
+output
+*/
+void CCmdProc::Print(const pchar str, ...)
+{
+	//Initialise the arguments list
+	va_list args;
+	va_start(args, str);
+	//Call the print function for the arguments list
+	this->Print(str, args);
+	//Tidy up
+	va_end(args);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that implements a PrintF like capability to write text to the uart
+output
+@param str Pointer to a null-terminated Format string of characters
+@param args The variable args structure containing variables to insert in the format string
+*/
+void CCmdProc::Print(const pchar str, va_list args)
+{
+	if(_uart && _uart->IsOpen()) {
+		//Allocate a buffer for output characters
+		char buf[256];
+		//Convert the variable-args and string into a character buffer
+		vsnprintf(buf, 256, str, args);
+		//Get the length of the string to send
+		uint32 len = strlen(buf);
+		//Write the character buffer to the Uart
+		_uart->Write((puint8)buf, len);
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sends an error code (CID_ERROR) command response with status code
+*/
+void CCmdProc::SendError(uint8 error, uint8 data)
+{
+	//Don't send an error if we're using Device Addresses, but haven't decoded
+	//an address yet
+	if(_rxUseDeviceAddr && _decodeAddr != (int16)_deviceAddr)
+		return;
+
+	//Make up a message
+	CCmdMsg msg;
+	msg.AddUint8(CID_ERROR);
+	msg.AddUint8(error);
+	msg.AddUint8(data);
+
+	//Send the message
+	this->SendMsg(&msg);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that writes a message out of the command processor, using the specified
+message.
+@param	msg		Pointer to the message buffer to write
+*/
+void CCmdProc::SendMsg(PCmdMsg msg)
+{
+	//Abort if no message is specified
+	if(!msg)
+		return;
+
+	//Get the message length
+	uint16 msgLen = msg->GetLength();
+
+	//Only send the message if contains something
+	if(_uart && (msgLen > 0)) {
+		//Initialise the checksum
+		uint16 csum = 0;
+
+		//Get the buffer pointer
+		puint8 msgBuf = msg->GetBufPtr();
+
+		//Write a header character
+		this->Write(CMD_TX_HEADER_CHAR);
+
+		//Write the Device Address if required, and include the device address in the checksum
+		if(_rxUseDeviceAddr) {
+			csum = CCrc16::Calc(&_deviceAddr, 0, 1, csum);
+			this->WriteHexUint8(_deviceAddr);
+		}
+
+		//Write the message buffer (Id and payload)
+		this->WriteHexData(msgBuf, msgLen);
+
+		//Compute and write the message checksum
+		csum = this->CalcMsgChecksum(msg, csum);
+		this->WriteHexUint16(csum);
+
+		//Write a <CR><LF> character pair
+		this->Write(13);
+		this->Write(10);
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that writes a message out of the command processor, using the specified
+id code, and data from the specified buffer
+@param	id		The message identification code to use
+@param	data	Pointer to where the message payload data is stored
+@param	len		The number of bytes of data to write
+*/
+void CCmdProc::SendMsg(TCmdId id, puint8 data, uint16 len)
+{
+	//Make up a message
+	CCmdMsg msg(id, data, len);
+	//Send the message
+	this->SendMsg(&msg);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets weather the command decoder looks for a device address code
+at the start of the message, and must match this correctly against its
+own ID code before allowing the message to be processed.
+*/
+void CCmdProc::SetRxUseDeviceAddr(bool enabled, uint8 addr)
+{
+	_rxUseDeviceAddr = enabled;
+	_deviceAddr = addr;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that determines weather the receiver process the checksum at the end
+of the message
+*/
+void CCmdProc::SetRxUseCsum(bool value)
+{
+	_rxUseCsum = value;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that determines weather the receiver ignores invalid Hex chars while
+decoding a message. If bad chars arn't ignored, then message decoding aborts
+with an error
+*/
+void CCmdProc::SetRxIgnoreBadChars(bool value)
+{
+	_rxIgnoreBadChars = value;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the UART that should be used for the shell
+*/
+void CCmdProc::SetUart(PComUart value)
+{
+	_uart = value;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that writes a single byte of data out of the command processor Uart
+*/
+void CCmdProc::Write(uint8 data)
+{
+	//Write the byte to the UART
+	_uart->WriteByte(data);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that write a Uint8 value out of the command processor as an Ascii-hex
+encoded character pair.
+Most significant nibble is written first
+*/
+void CCmdProc::WriteHexUint8(uint8 data)
+{
+	this->Write(CConversion::GetHexChar(data >> 4));
+	this->Write(CConversion::GetHexChar(data));
+}
+
+/*!-----------------------------------------------------------------------------
+Function that write a Uint16 value out of the command processor as an Ascii-hex
+encoded characters.
+Least significant byte is written first
+*/
+void CCmdProc::WriteHexUint16(uint16 data)
+{
+	puint8 pdata = (puint8)&data;
+	this->WriteHexUint8(*pdata);
+	this->WriteHexUint8(*(pdata + 1));
+}
+
+/*!-----------------------------------------------------------------------------
+Function that write a Uint32 value out of the command processor as an Ascii-hex
+encoded characters.
+Least significant byte is written first
+*/
+void CCmdProc::WriteHexUint32(uint32 data)
+{
+	puint8 pdata = (puint8)&data;
+	this->WriteHexUint8(*pdata);
+	this->WriteHexUint8(*(pdata + 1));
+	this->WriteHexUint8(*(pdata + 2));
+	this->WriteHexUint8(*(pdata + 3));
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CCmdProc::WriteHexData(puint8 data, uint16 len)
+{
+	for(uint16 idx = 0; idx < len; idx++) {
+		this->WriteHexUint8(*data);
+		data++;
+	}
+}
+
+//==============================================================================

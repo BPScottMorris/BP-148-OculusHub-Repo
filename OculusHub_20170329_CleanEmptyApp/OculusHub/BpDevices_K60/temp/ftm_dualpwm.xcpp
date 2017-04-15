@@ -1,0 +1,165 @@
+#include "ftm_dualpwm.hpp"
+
+//==============================================================================
+//Implementation...
+//==============================================================================
+//CFtmDualPwm
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor for the class
+@param[in]	ftmId		The index of the flex timer module to use
+@param[in]	chanPair	The channel pair to use for the PWM outputs
+*/
+CFtmDualPwm::CFtmDualPwm(uint8 ftmId, EFtmChannelPair chanPair) 
+	: base(ftmId)
+{			
+	//Store default channel combination settings for a Class-D drive...	
+	// - Combine operation of channels n and n+1
+	// - Enable complimentary pair channel operation on channel n+1 from channel n
+	// - Enable deadtime insertion for the channel pair
+	// - Sync PWM between channels
+	//For combine, use "xxx0" values - these will be shifted left into the appropriate
+	//channel pair byte (0...3) when the timer is started.
+	_combine = FTM_COMBINE_COMBINE0_MASK | FTM_COMBINE_COMP0_MASK | FTM_COMBINE_DTEN0_MASK | FTM_COMBINE_SYNCEN0_MASK;
+		
+	//Setup the default values
+	this->SetChannelPair(chanPair);
+	this->SetDeadtime(FTM_DTPS_DIV1, 0);
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the class
+*/
+CFtmDualPwm::~CFtmDualPwm()
+{	
+	//Stop the FTM and disabled interrupts and turn off hardware	
+	this->SetEnabled(false);
+}
+
+/*!-----------------------------------------------------------------------------
+Funciton that can be overriden by inheriting classes to impliment additional 
+functionality as the Timer is started, but before the clock actually starts.
+*/
+void CFtmDualPwm::DoStart()
+{	
+	//Apply the COMBINE register - this can only be done once register
+	//write protection has been disabled.
+	//NB: Only one pair of channels can be combined at a time.	
+	_ftm->COMBINE = ((uint32)_combine) << (8 * ((uint8)_chanPair));
+	
+	//Apply the DEADTIME register - this can only be done once register
+	//write protection has been disabled
+	_ftm->DEADTIME = (uint32)_deadtime;
+	
+	//Configure the first FTM drive channel (this turns the PWM output logically on)
+	//Set for "Combine PWM : High-true pulses (set on channel (n) match, and clear on channel (n+1) match)"
+	SET_BIT(_ftm->CONTROLS[_chanPairX].CnSC, FTM_CnSC_ELSB_SHIFT);
+	CLR_BIT(_ftm->CONTROLS[_chanPairX].CnSC, FTM_CnSC_ELSA_SHIFT);		
+	
+	//Configure the second FTM drive channel (this turns the PWM output logically off)
+	//Set for "Combine PWM : High-true pulses (set on channel (n) match, and clear on channel (n+1) match)"
+	SET_BIT(_ftm->CONTROLS[_chanPairY].CnSC, FTM_CnSC_ELSB_SHIFT);
+	CLR_BIT(_ftm->CONTROLS[_chanPairY].CnSC, FTM_CnSC_ELSA_SHIFT);
+	
+	//Set the maximum count as the SYNC loading point
+	_ftm->SYNC = FTM_SYNC_CNTMAX_MASK;
+	
+	//Setup default PWM output duty-cycle for the driver (to 50%)	
+	//this->SetPwm(0.5);	
+	
+	//Unmask the FTM drive outputs to the transmitter
+	_ftm->OUTMASK = 0;
+	
+	//Synchronise the registers
+	SET_BIT(_ftm->SYNC, FTM_SYNC_SWSYNC_SHIFT);
+}
+
+/*!-----------------------------------------------------------------------------
+Funciton that can be overriden by inheriting classes to impliment additional
+functionality when the timer is stopped (called after the clock is stopped,
+regardless of weather the hardware is enabled, so the _enabled flag should
+be checked before altering _ftm register values).
+*/
+void CFtmDualPwm::DoStop()
+{
+	if(_enabled) {
+		//Mask the FTM drive outputs to the transmitter (force to inactive state)
+		//_ftm->OUTMASK = BIT(_chanPairX) | BIT(_chanPairY);
+		_ftm->OUTMASK = 0xFF;
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the Class-D transmitter channel pairing, which ultimatly determines
+which IO pins are used to drive the full-bridge output.
+This setting is only applied when the timer is started.
+NB: For a Class-D driver, only one pair of channels are allowed to be combined at a time.
+*/
+void CFtmDualPwm::SetChannelPair(EFtmChannelPair value)
+{
+	if(!_started) {
+		_chanPair = value;
+		switch(_chanPair) {
+			case FTM_CHANPAIR_01 : { _chanPairX = 0; _chanPairY = 1; break; }
+			case FTM_CHANPAIR_23 : { _chanPairX = 2; _chanPairY = 3; break; }
+			case FTM_CHANPAIR_45 : { _chanPairX = 4; _chanPairY = 5; break; }
+			case FTM_CHANPAIR_67 : { _chanPairX = 6; _chanPairY = 7; break; }
+		}
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is used to configure the output deadtime insertion mechanism.
+This value will be applied with the timer is started, unless the timer is enabled
+in which case it will be applied immediatly.
+*/
+void CFtmDualPwm::SetDeadtime(EFtmDeadtimePrescalar prescalar, uint8 interval)
+{
+	//Set the buffered contents of the deadtime register
+	_deadtime = FTM_DEADTIME_DTPS((uint8)prescalar) | FTM_DEADTIME_DTVAL(interval);
+	
+	//Apply the setting immediatly if the timer is started
+	if(_started) {
+		_ftm->DEADTIME = (uint32)_deadtime;
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that is used to set the FTM CNT values at which the PWM output will be
+turned 'ON' (front edge) and 'OFF' (back edge) (the complimentary output doing 
+the inverse of this).
+NB: Care should be taken to ensure these values do not exceed the FTM modulo
+value, otherwise the switching action will not occur, and the FTM CNT register
+will never pass the threshold.
+*/
+void CFtmDualPwm::SetPwm(uint16 cntFront, uint16 cntBack)
+{
+	if(_enabled) {
+		//Load the new PWM values
+		_ftm->CONTROLS[_chanPairX].CnV = FTM_CnV_VAL(cntFront);
+		_ftm->CONTROLS[_chanPairY].CnV = FTM_CnV_VAL(cntBack);	
+		
+		//Set Synchronisation Bit to indicate New PWM Duty Cycle loaded.
+		//This must be used in current configuration to indicate new values.
+		SET_BIT(_ftm->SYNC, FTM_SYNC_SWSYNC_SHIFT);
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the PWM duty cycle as a percentage of the current modulo value
+of the FTM timer. 
+@param percent	The percentage between 0.0 and 1.0 to set the PWM to.
+*/		
+void CFtmDualPwm::SetPwm(float percent)
+{
+	//Compute the front and back edge counter values...
+	float cntCenter = (float)_modulo / 2.0;
+	float cntOffset = cntCenter * percent;
+	uint16 cntFront = (uint16)(cntCenter - cntOffset);
+	uint16 cntBack = (uint16)(cntCenter + cntOffset);
+	
+	//Load the new PWM cycle
+	this->SetPwm(cntFront, cntBack);
+}
+		
+//==============================================================================

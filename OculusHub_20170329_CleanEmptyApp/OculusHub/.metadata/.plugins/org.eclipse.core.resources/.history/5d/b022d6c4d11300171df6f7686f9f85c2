@@ -1,0 +1,1299 @@
+#include "battdist_main.hpp"
+
+#include "com.hpp"
+
+//==============================================================================
+//Class Implementation...
+//==============================================================================
+//CBattDistMain
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor that initialises the hardware and operating systems
+*/
+CBattDistMain::CBattDistMain()
+{
+	//Set all the power outputs to off
+	this->PowerControlOff(PWR_ENABLE_ALL_MASK);
+
+	//Ensure the OLED display is off (it has a specific power up sequence)
+	OLED_PWR_OFF;
+
+	//Initialise the SPI port and its chip-select inactive states (for the SPI display)
+	_spi = new CSpiPort(0);
+	_spi->Enable(true);
+
+	//Create a low level driver for the Display controller SSD1306 device
+	_spiOled = new CSpiSSD1306(_spi, SPI_OLED_CHAN);
+
+	//Create a device to allow GDI control of the display
+	_gdiOled = new CGdiDeviceSSD1306(_spiOled);
+	_gdiOled->PaletteDefaults();
+
+	//Create a display service for managing the display contents
+	_display = new CDisplay(_gdiOled);
+	_display->SetEnabled(true);
+
+	//Create a manager for handling display messages
+	_displayManager = new CDisplayManager();
+
+	//Create display contents objects
+	_dispMain = new CDisplayConfig();
+	_dispButton = new CDisplayConfig();
+	_dispButtonLongEn = false;
+	_dispButtonExtendedEn = false;
+
+	//Setup the display enable and timeout variables
+
+
+	//Initialise the ADC device
+	/*
+	_adc = new CAdcDevice(ADC_ID);
+	_adc->Calibrate();
+	*/
+
+	//Create the ADC channel for monitoring the motor current
+	/*
+	TAdcSettings adcSettings;
+	adcSettings.SampleCont = false;						//Use single sampling mode
+	adcSettings.SampleIRQ = false;						//Prevent IRQ's to be generated
+	adcSettings.ClkSource = adcBusClkDiv2;
+	adcSettings.ClkDiv = addClkDiv8;
+	adcSettings.SampleAveraging = advAverage32;
+	adcSettings.SampleChannel = ADC_CHAN_DISABLED;		//Selects the sampling channel
+	adcSettings.SampleLowPower = true;
+	adcSettings.SampleTime = adtLong20;
+	adcSettings.SampleFormat = adf16BitSingle;
+	adcSettings.SampleHighSpeed = true;
+	adcSettings.SampleMuxBank = admBankA;
+	_adcChannel = new CAdcChannel(_adc);
+	_adcChannel->SetSettings(&adcSettings);
+	*/
+
+	//Initialise the analogue service
+	/*
+	_analogue = new CAnalogue(_adcChannel);
+	_analogue->SetServiceFrequency(ANALOGUE_SERVICE_FREQ);
+	_analogue->SetEnabled(true);
+	//_analogue->OnStatus.Set(this, &CBattDistMain::HandleAnalogueStatus);
+	*/
+
+	//Initialise the settings storage object
+	//_flashSettings = new CFlashData(_flash, FLASH_SETTINGS_START, FLASH_SETTINGS_SIZE);
+
+	//Create a timer for servicing the button
+	_buttonTmr = new CTickTimer();
+	_buttonTmr->SetFrequency(BUTTON_SERVICE_FREQUENCY);
+	_buttonTmr->SetEnabled(true);
+
+	//Create a timer for servicing the button
+	_faultTmr = new CTickTimer();
+	_faultTmr->SetFrequency(FAULT_SERVICE_FREQUENCY);
+	_faultTmr->SetEnabled(true);
+
+	//Create a timer for servicing the button
+	_fsmTmr = new CTickTimer();
+	_fsmTmr->SetFrequency(FSM_SERVICE_FREQUENCY);
+	_fsmTmr->SetEnabled(true);
+
+	//Initialise the FSM variables
+	_fsmState = BATTDIST_OFF;
+	_fsmTmoCtr = 0;
+	_fsmTmoFlag = false;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+CBattDistMain::~CBattDistMain()
+{
+}
+
+/*!-----------------------------------------------------------------------------
+Function that should be called to read and update the debounced status for the
+power/user button.
+*/
+bool CBattDistMain::ButtonService()
+{
+	//Clear strobes
+	_buttonPressed = false;
+	_buttonReleased = false;
+	_buttonChanged = false;
+
+	//Service the button at timer intervals
+	if(_buttonTmr->Poll()) {
+		//Store the old button states
+		bool buttonStateOld = _buttonState;
+		EButtonDuration buttonDurationOld = _buttonDuration;
+
+		//Read the button state
+		_buttonRaw = PWR_BUTTON;
+
+		//Time how long the button has been pressed for
+		if(!_buttonRaw) {
+			//Button released so clear flags
+			_buttonRawCnt = 0;
+		}
+		else if(_buttonRawCnt < 65535) {
+			//Increment button pressed timer
+			_buttonRawCnt++;
+		}
+
+		//Determine the duration the button has been held for
+		if(_buttonRawCnt >= (uint16)BUTTON_IGNORE_PRESS_COUNTS) {
+			_buttonDuration = BUTTON_IGNORE;
+			_buttonState = false;
+			_buttonHeld = false;
+			buttonStateOld = false;
+		}
+		else if(_buttonRawCnt >= (uint16)BUTTON_EXTENDED_PRESS_COUNTS) {
+			_buttonDuration = BUTTON_EXTENDED;
+			_buttonState = true;
+			_buttonHeld = true;
+		}
+		else if(_buttonRawCnt >= (uint16)BUTTON_LONG_PRESS_COUNTS) {
+			_buttonDuration = BUTTON_LONG;
+			_buttonState = true;
+			_buttonHeld = true;
+		}
+		else if(_buttonRawCnt >= (uint16)BUTTON_SHORT_PRESS_COUNTS) {
+			_buttonDuration = BUTTON_SHORT;
+			_buttonState = true;
+			_buttonHeld = false;
+		}
+		else {
+			_buttonDuration = BUTTON_NONE;
+			_buttonState = false;
+			_buttonHeld = false;
+		}
+
+		//Determine rising and falling edges
+		_buttonPressed = (!buttonStateOld & _buttonState);
+		_buttonReleased = (buttonStateOld & !_buttonState);
+
+		//If the buttons been released, then keep the previous duration settings
+		//for one cycle, to allow the released button duration to be processed
+		if(_buttonReleased)
+			_buttonDuration = buttonDurationOld;
+
+		//If the button duration has changed, then set a flag to indicate this
+		_buttonChanged = (_buttonDuration != buttonDurationOld);
+
+		//Latch the button state until cleared by a status read
+		_buttonStateLatch |= _buttonState;
+		_buttonHeldLatch |= _buttonHeld;
+
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Handler that executes decoded commands from the serial port
+*/
+void CBattDistMain::CmdExecuteEvent(PCmdProcExecute params)
+{
+	//Call the base method first
+	base::CmdExecuteEvent(params);
+
+	//Process MAIN application commands
+	switch(params->Id) {
+		case CID_BATTDIST_STATUS : { this->CmdExecute_Status(params); params->Handled = true; break; }
+		case CID_BATTDIST_CONFIG : { this->CmdExecute_Config(params); params->Handled = true; break; }
+		case CID_BATTDIST_LIM_TEST : { this->CmdExecute_LimTest(params); params->Handled = true; break; }
+		case CID_BATTDIST_DISP_ENABLE : { this->CmdExecute_DispEnable(params); params->Handled = true; break; }
+		case CID_BATTDIST_MSG_CLEAR : { this->CmdExecute_MsgClear(params); params->Handled = true; break; }
+		case CID_BATTDIST_MSG_GET : { this->CmdExecute_MsgGet(params); params->Handled = true; break; }
+		case CID_BATTDIST_MSG_LIST : { this->CmdExecute_MsgList(params); params->Handled = true; break; }
+		case CID_BATTDIST_MSG_SET : { this->CmdExecute_MsgSet(params); params->Handled = true; break; }
+		case CID_BATTDIST_MSG_REMOVE : { this->CmdExecute_MsgRemove(params); params->Handled = true; break; }
+		case CID_BATTDIST_MSG_SHOW : { this->CmdExecute_MsgShow(params); params->Handled = true; break; }
+		case CID_BATTDIST_POWER_RESTART : { this->CmdExecute_PowerRestart(params); params->Handled = true; break; }
+		case CID_BATTDIST_POWER_SHUTDOWN : { this->CmdExecute_PowerShutdown(params); params->Handled = true; break; }
+		case CID_BATTDIST_POWER_KILL: { this->CmdExecute_PowerKill(params); params->Handled = true; break; }
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_CONFIG command is received
+*/
+void CBattDistMain::CmdExecute_Config(PCmdProcExecute exe)
+{
+	bool success = true;
+	uint8 status = CST_OK;
+	uint8 mask = 0;
+	uint8 state = 0;
+
+	//Read the mask and state bytes byte
+	success &= exe->Msg->ReadUint8(&mask, 0);
+	success &= exe->Msg->ReadUint8(&state, 0);
+
+	//Report an error if we've not received enough data
+	if(!success) {
+		status = CST_CMD_LENGTH_ERROR;
+	}
+	else {
+		//Apply the new config
+		this->PowerControl(mask, state);
+	}
+
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_CONFIG);
+	msg.AddUint8(status);
+	//msg.AddUint8(_powerCtrl);
+	//msg.AddUint8(_faultStateLatch);
+	exe->CmdProc->SendMsg(&msg);
+}
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_DISP_ENABLE command is received
+*/
+void CBattDistMain::CmdExecute_DispEnable(PCmdProcExecute exe)
+{
+	bool success = true;
+	uint8 status = CST_OK;
+	bool en;
+
+	//Get the enable flag
+	success &= exe->Msg->ReadBool(&en, 0);
+
+	//If the value is specified then update the display enable state
+	if(success) {
+		_display->SetDisplayState(en);
+	}
+
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_DISP_ENABLE);
+	msg.AddBool(_display->GetDisplayState());
+	exe->CmdProc->SendMsg(&msg);
+}
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_LIM_TEST command is received
+*/
+void CBattDistMain::CmdExecute_LimTest(PCmdProcExecute exe)
+{
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_LIM_TEST);
+
+	exe->CmdProc->SendMsg(&msg);
+}
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_MSG_CLEAR command is received
+*/
+void CBattDistMain::CmdExecute_MsgClear(PCmdProcExecute exe)
+{
+	//Clear down the contents of the message list
+	_displayManager->Clear();
+
+	//Return to the Home Screen if a message is being shown
+	if(_fsmState > BATTDIST_HOME) {
+		this->FsmSetState(BATTDIST_HOME);
+	}
+
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_MSG_CLEAR);
+	exe->CmdProc->SendMsg(&msg);
+}
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_MSG_SET command is received
+*/
+void CBattDistMain::CmdExecute_MsgGet(PCmdProcExecute exe)
+{
+	bool success = true;
+	uint8 status = CST_OK;
+	PDisplayConfig disp = NULL;
+	uint8 id;
+	uint8 flags;
+
+	//Read out the message parameters
+	success &= exe->Msg->ReadUint8(&id, 0);
+
+	if(!success) {
+		//Report an error if we've not received enough data
+		status = CST_CMD_LENGTH_ERROR;
+	}
+	else {
+		//Create a new display object
+		disp = _displayManager->GetDisplayById(id);
+		if(!disp)
+			status = CST_FAIL;
+	}
+
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_MSG_SET);
+	msg.AddUint8(status);
+
+	if(disp) {
+		//Add the display properties
+		flags = ((uint8)(disp->Layout) & 0x03) << 6;
+		flags |= ((uint8)(disp->Font2) & 0x07) << 3;
+		flags |= ((uint8)(disp->Font1) & 0x07) << 0;
+
+		msg.AddUint8(disp->Id);
+		msg.AddUint8(flags);
+		msg.AddUint8((uint8)(disp->Icon1));
+		msg.AddUint8((uint8)(disp->Icon2));
+		msg.AddStringZ(disp->Text1, DISP_TEXT_MAX_LEN);
+		msg.AddStringZ(disp->Text2, DISP_TEXT_MAX_LEN);
+	}
+
+	exe->CmdProc->SendMsg(&msg);
+}
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_MSG_LIST command is received
+*/
+void CBattDistMain::CmdExecute_MsgList(PCmdProcExecute exe)
+{
+	uint8 msgCnt = _displayManager->GetCount();
+
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_MSG_LIST);
+	msg.AddUint8(msgCnt);	//Add number of messages
+
+	//Followed by array of message ID codes
+	for(uint8 i = 0; i < msgCnt; i++) {
+		//Get the display
+		PDisplayConfig disp = _displayManager->GetDisplayByIndex(i);
+
+		//Add information about the message
+		msg.AddUint8(disp->Id);
+	}
+
+	exe->CmdProc->SendMsg(&msg);
+}
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_MSG_REMOVE command is received
+*/
+void CBattDistMain::CmdExecute_MsgRemove(PCmdProcExecute exe)
+{
+	bool success = true;
+	uint8 status = CST_OK;
+	uint8 id;
+
+	//Get the Id of the message to remove
+	success &= exe->Msg->ReadUint8(&id, 0);
+
+	if(!success) {
+		//Report an error if we've not received enough data
+		status = CST_CMD_LENGTH_ERROR;
+	}
+	else {
+		//Remove the message
+		success = _displayManager->Remove(id);
+
+		if(!success) {
+			//Indicate failure if the message can't be found
+			status = CST_FAIL;
+		}
+		else if(_fsmState == BATTDIST_MSG_SHOW && _dispMain && _dispMain->Id == id) {
+			//If the message is currently being shown, then move to the next message
+			this->FsmSetState(BATTDIST_MSG_SHOW);
+		}
+	}
+
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_MSG_REMOVE);
+	msg.AddUint8(status);
+	exe->CmdProc->SendMsg(&msg);
+}
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_MSG_SET command is received
+*/
+void CBattDistMain::CmdExecute_MsgSet(PCmdProcExecute exe)
+{
+	bool success = true;
+	uint8 status = CST_OK;
+	uint8 flags;
+
+	//Create a new display object
+	PDisplayConfig disp = new CDisplayConfig();
+
+	//Read out the message parameters
+	success &= exe->Msg->ReadUint8(&disp->Id, 0);
+	success &= exe->Msg->ReadUint8(&flags, 0);
+	success &= exe->Msg->ReadUint8((puint8)&disp->Icon1, 0);
+	success &= exe->Msg->ReadUint8((puint8)&disp->Icon2, 0);
+	success &= exe->Msg->ReadStringZ(disp->Text1, DISP_TEXT_MAX_LEN);
+	success &= exe->Msg->ReadStringZ(disp->Text2, DISP_TEXT_MAX_LEN);
+
+	if(!success) {
+		//Report an error if we've not received enough data
+		status = CST_CMD_LENGTH_ERROR;
+		//If an error occurred, delete the display object
+		delete disp;
+	}
+	else {
+		//If everything was ok, add the new object to the display list
+		disp->Invalid = true;
+		disp->Layout = (EDisplayLayout)((flags >> 6) & 0x03);
+		disp->Font2 = (EDisplayFont)((flags >> 3) & 0x07);
+		disp->Font1 = (EDisplayFont)((flags >> 0) & 0x07);
+		_displayManager->Set(disp);
+	}
+
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_MSG_SET);
+	msg.AddUint8(status);
+	exe->CmdProc->SendMsg(&msg);
+}
+
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_MSG_SHOW command is received
+*/
+void CBattDistMain::CmdExecute_MsgShow(PCmdProcExecute exe)
+{
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_MSG_SHOW);
+
+	exe->CmdProc->SendMsg(&msg);
+}
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_POWER_KILL command is received
+*/
+void CBattDistMain::CmdExecute_PowerKill(PCmdProcExecute exe)
+{
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_POWER_KILL);
+	exe->CmdProc->SendMsg(&msg);
+
+	//Set the state machine to turn off the power
+	this->FsmSetState(BATTDIST_OFF);
+}
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_POWER_RESET command is received
+*/
+void CBattDistMain::CmdExecute_PowerRestart(PCmdProcExecute exe)
+{
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_POWER_RESTART);
+	exe->CmdProc->SendMsg(&msg);
+
+	//Set the state machine to turn off the power
+	this->FsmSetState(BATTDIST_RESTART);
+}
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_POWER_SHUTDOWN command is received
+*/
+void CBattDistMain::CmdExecute_PowerShutdown(PCmdProcExecute exe)
+{
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_POWER_SHUTDOWN);
+	exe->CmdProc->SendMsg(&msg);
+
+	//Set the state machine to turn off the power
+	this->FsmSetState(BATTDIST_SHUTDOWN);
+}
+
+/*!-----------------------------------------------------------------------------
+Function executed when a CID_BATTDIST_STATUS command is received
+*/
+void CBattDistMain::CmdExecute_Status(PCmdProcExecute exe)
+{
+	//Read the current RTC time
+	uint32 seconds = (uint32)CSysTick::GetSeconds();
+
+	//Make up the flags1 register
+	uint8 flags1 = 0;
+	if(!BATT1_OK) SET_BIT(flags1, BATTDIST_STATUS_BATT1_FAULT_BIT);
+	if(!BATT2_OK) SET_BIT(flags1, BATTDIST_STATUS_BATT2_FAULT_BIT);
+	if(_display->GetDisplayState()) SET_BIT(flags1, BATTDIST_STATUS_DISP_ENABLE_BIT);
+	if(_buttonState) SET_BIT(flags1, BATTDIST_STATUS_BTN_PRESSED_BIT);
+	if(_buttonStateLatch) SET_BIT(flags1, BATTDIST_STATUS_BTN_PRESSED_LATCH_BIT);
+	if(_buttonHeldLatch) SET_BIT(flags1, BATTDIST_STATUS_BTN_HELD_LATCH_BIT);
+
+	//Make up and send the response message
+	CCmdMsg msg;
+	msg.AddUint8(CID_BATTDIST_STATUS);
+	//msg.AddUint8(flags);					//Add the status flags header
+	msg.AddUint8(BATTDIST_STATUS_VERSION);	//Add a version number - ### Currently unused but for future proofing
+	msg.AddUint32(seconds);
+
+	//Add Flags
+	msg.AddUint8(flags1);					//Battery, Display and Power Button Status Flags
+	msg.AddUint8(0);						//Add the question response flags (bit mask for question displays 0x10 [Power] to 0x17)
+
+	//Sensors
+//### TODO
+	msg.AddUint16(0);						//Battery Supply (mV)
+	msg.AddUint16(0);						//Pressure (mBar)
+	msg.AddInt16(0);						//Temperature (mCelsius)
+	msg.AddUint16(0);						//Relative Humidity (%)
+	msg.AddUint16(0);						//Water Sensor (mV)
+
+	//Add power switch gear information
+	msg.AddUint8(_powerCtrl);				//Power Control Enable Flags
+	msg.AddUint8(_faultStateLatch);			//Power Control Fault Flags
+
+	//Add Lim Faults
+	msg.AddUint32(0);						//Flags, 8 circuits, P and N failure flags
+
+	//Messages on display (non-system),
+	//followed by an array of message ID's
+	uint8 msgCnt = _displayManager->GetCount();
+	msg.AddUint8(msgCnt);	//Add number of messages
+	for(uint8 i = 0; i < msgCnt; i++) {
+		PDisplayConfig disp = _displayManager->GetDisplayByIndex(i);
+		msg.AddUint8(disp->Id);
+	}
+
+	//Send the message
+	exe->CmdProc->SendMsg(&msg);
+
+	//Clear any latched signals
+	_faultStateLatch = this->FaultsRead();
+	_buttonStateLatch = false;
+	_buttonHeldLatch = false;
+}
+
+/*!-----------------------------------------------------------------------------
+Function called when a CID_SYS_REBOOT command has been issued, allowing the
+system to shut down services.
+*/
+void CBattDistMain::DoReboot()
+{
+}
+
+/*!-----------------------------------------------------------------------------
+Function called to start the application running
+*/
+void CBattDistMain::DoRun()
+{
+	//Set all the power outputs to off
+	this->PowerControlOff(PWR_ENABLE_ALL_MASK);
+
+	//Clear the receiver, and prevent command processing until bootup
+	_cmdProcEn = false;
+	_com->Clear(true, false);
+
+	//Clear button press detection variables
+	_buttonRaw = PWR_BUTTON;
+	_buttonRawCnt = 0;
+	_buttonPressed = false;
+	_buttonReleased = false;
+	_buttonDuration = BUTTON_NONE;
+	_buttonState = false;
+	_buttonStateLatch = false;
+	_buttonHeld = false;
+	_buttonHeldLatch = false;
+	_buttonTmr->Reset();
+
+	//Initialise the fault monitoring system
+	for(uint8 i = 0; i < PWR_FAULTS; i++) {
+		_faultRawCnt[i] = 0;
+	}
+	_faultRaw = this->FaultsRead();
+	_faultState = _faultRaw;
+	_faultStateLatch = _faultRaw;
+	_faultTmr->Reset();
+
+	//Start the analogue sensor service
+	//_analogue->ServiceStart();
+
+	//Initialise the display hardware
+	OLED_PWR(true);		//Power up the display module
+	_spiOled->Open();
+	_spiOled->Initialise(true);	//Initialise for use with external VCC supply
+
+	//Start the display service
+	_display->SetDisplayMain(_dispMain);
+	_display->SetDisplayTemp(NULL);
+	_display->ServiceStart();
+
+	//Clear down the display manager
+	_displayManager->Clear();
+
+	//Create some dummy displays
+	//Alerts
+	//_displayManager->Set(new CDisplayConfig(0xF5, LAYOUT_STD, ICON_ALERT, ICON_BATT_VERT_PORT, FONT_MED, "BATT LOW"));
+	//_displayManager->Set(new CDisplayConfig(0xF2, LAYOUT_STD, ICON_ALERT, ICON_VACUUM, FONT_MED, "NO VACUUM"));
+	//_displayManager->Set(new CDisplayConfig(0xFF, LAYOUT_STD, ICON_ALERT, ICON_SUPPLY, FONT_MED, "THRUSTER 3"));
+	//_displayManager->Set(new CDisplayConfig(0xF1, LAYOUT_STD, ICON_ALERT, ICON_WATER));
+	//_displayManager->Set(new CDisplayConfig(0xF7, LAYOUT_STD, ICON_ALERT, ICON_INSULATION, FONT_MED, "FRONT DIST"));
+	//Info
+	_displayManager->Set(new CDisplayConfig(0x72, LAYOUT_PARAM, ICON_BATT_VERT_PORT, FONT_LARGE, "95%"));
+	_displayManager->Set(new CDisplayConfig(0x73, LAYOUT_PARAM, ICON_BATT_VERT_STBD, FONT_LARGE, "94%"));
+	_displayManager->Set(new CDisplayConfig(0x75, LAYOUT_PARAM, ICON_VACUUM, FONT_LARGE, "780", "mb"));
+	_displayManager->Set(new CDisplayConfig(0x71, LAYOUT_PARAM, ICON_TEMPERATURE, FONT_LARGE, "37°C"));
+
+	//Initialise the system state machine
+	_fsmTmr->Reset();
+	_fsmTmoCtr = 0;
+	_fsmTmoFlag = false;
+	this->FsmSetState(BATTDIST_INIT_ON);
+
+	//Output some status information
+	COM_PRINT("%s\r\n", CSI_RESET_LINE);
+	COM_PRINT("SRS FUSION BATTERY-DISTRIBUTION\r\n");
+	//COM_PRINT("Copyright (c) 2016 Strategic Robotic Systems Inc. All rights reserved.\r\n");
+	//COM_PRINT("For further information, visit http://www.srsfusion.com\r\n");
+	COM_PRINT("v%u.%u.%u (%s)", FIRMWARE_VERSION_MAJOR, FIRMWARE_VERSION_MINOR, FIRMWARE_VERSION_BUILD, FIRMWARE_DATE);
+	DEBUG_PRINT(" [DEBUG]");
+	COM_PRINT("\r\n");
+
+	//Send a "Ready" message (for Main Application)
+	//this->CmdSend_Ready();
+
+	//Start the main loop
+	while(_run) {
+		//Service the analogue sensors - run at the end of each cycle of sampling the sensors
+		/*
+		if(_analogue->Service()) {
+			//Get the analogue values
+			TAnalogueStatus anaState;
+			_analogue->GetStatus(&anaState);
+		}
+		*/
+
+		//Service the command processor (if enabled - disabled during shut down)
+		//(is enabled when the VCB is started)
+		if(_cmdProcEn) {
+			_cmd->Service();
+		}
+
+		//Service the push-button
+		this->ButtonService();
+
+		//If a button is pressed, then wake the display up (with a timeout).
+		//If the display is enabled, the timeout won't have any effect
+		if(_buttonPressed) {
+			_display->SetDisplayOnTmo();
+		}
+
+		//Service fault signals
+		this->FaultsService();
+
+		//Service the state machine
+		this->FsmService();
+
+		//Service the display
+		_display->Service();
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that reads the status of the power switchgear
+*/
+uint8 CBattDistMain::FaultsRead()
+{
+	uint8 faults = 0;
+
+	//Update the power supply status bits
+	if(!PWR_SW0_OK)	SET_BIT(faults, PWR_FAULT_THR1_BIT);
+	if(!PWR_SW1_OK)	SET_BIT(faults, PWR_FAULT_THR2_BIT);
+	if(!PWR_SW2_OK)	SET_BIT(faults, PWR_FAULT_THR3_BIT);
+	if(!PWR_SW3_OK)	SET_BIT(faults, PWR_FAULT_THR4_BIT);
+	if(!PWR_SW4_OK)	SET_BIT(faults, PWR_FAULT_THR5_BIT);
+	if(!PWR_SW5_OK)	SET_BIT(faults, PWR_FAULT_THR6_BIT);
+	if(!PWR_SW6_OK)	SET_BIT(faults, PWR_FAULT_DEVDIST_BIT);
+	if(!PWR_SW7_OK)	SET_BIT(faults, PWR_FAULT_RACK_BIT);
+
+	return faults;
+}
+
+/*!-----------------------------------------------------------------------------
+Function called to read and de-glitch fault signals from the power controls.
+A fault signal must be asserted for a minimum de-glitch period before the system
+will recognise it as asserted.
+*/
+void CBattDistMain::FaultsService()
+{
+	uint8 faultRawOld = _faultRaw;
+	uint8 faultRising;
+	uint8 faultMask;
+
+	//Read the status of the fault signals
+	_faultRaw = this->FaultsRead();
+
+	//Determine new rising faults
+	faultRising = _faultRaw & ~faultRawOld;
+
+	//Start new deglitch timers, or clear existing faults
+	faultMask = 0x01;
+	for(uint8 i = 0; i < PWR_FAULTS; i++) {
+		if(IS_BITS_CLR(_faultRaw, faultMask)) {
+			//Clear any fault timers who's signals are disasserted
+			_faultRawCnt[i] = 0;
+			CLR_BITS(_faultState, faultMask);
+		}
+		else if(IS_BITS_SET(faultRising, faultMask)) {
+			//If any new fault signals are registered, load the de-glitch timer
+			_faultRawCnt[i] = FAULT_ACTIVE_COUNTS;
+		}
+
+		//Shift the fault mask
+		faultMask <<= 1;
+	}
+
+	//If the fault timer period is up, then decrease all active deglitching counters
+	if(_faultTmr->Poll()) {
+		faultMask = 0x01;
+		for(uint8 i = 0; i < PWR_FAULTS; i++) {
+			//Decrease any non-zero fault timer
+			if(_faultRawCnt[i] > 0) {
+				_faultRawCnt[i]--;
+				if(_faultRawCnt[i] == 0) {
+					//If a counter has reached zero, then assert the corresponding fault signal
+					SET_BITS(_faultState, faultMask);
+				}
+			}
+
+			//Shift the fault mask
+			faultMask <<= 1;
+		}
+	}
+
+	//Latch any newly asserted fault states
+	_faultStateLatch |= _faultState;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that handles the action event from the flash programmer
+*/
+void CBattDistMain::FlashProgActionEvent(PFlashProgActionParams params)
+{
+	switch(params->Action) {
+		case FPROG_ACTION_PROG_INIT :
+		case FPROG_ACTION_PROG_UPDATE :
+		case FPROG_ACTION_UPDATE_START : {
+			break;
+		}
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the FSM into a new state, and initialises state variables
+*/
+void CBattDistMain::FsmSetState(EBattDistFsm state)
+{
+	//Update the new state variable
+	_fsmState = state;
+
+	//Disable the use of the long and extended buttons, unless specified below
+	_dispButtonLongEn = false;
+	_dispButtonExtendedEn = false;
+
+	//Initialise the new state
+	switch(_fsmState) {
+		case BATTDIST_INIT_ON : {
+			//Show the turn on screen
+			_dispMain->Display(LAYOUT_STD, ICON_POWER, FONT_MED, "TURN ON ?");
+			_dispButtonLongEn = true;
+			_dispButtonExtendedEn = false;
+			_fsmTmoCtr = FSM_TMO_POWER_ON;
+
+			//Turn all power outputs off
+			this->PowerControlOff(PWR_ENABLE_ALL_MASK);
+
+			break;
+		}
+		case BATTDIST_INIT_LEAK : {
+			//Run a leak detect test
+			_dispMain->Display(LAYOUT_STD, ICON_WAIT, FONT_MED, "TESTING 1");
+			_dispButtonLongEn = false;
+			_dispButtonExtendedEn = true;
+			_fsmTmoCtr = FSM_TMO_INIT_LEAK;
+			break;
+		}
+		case BATTDIST_INIT_LIM : {
+			//Run a LIM test
+			_dispMain->Display(LAYOUT_STD, ICON_WAIT, FONT_MED, "TESTING 2");
+			_dispButtonLongEn = false;
+			_dispButtonExtendedEn = true;
+			_fsmTmoCtr = FSM_TMO_INIT_LIM;
+			break;
+		}
+		case BATTDIST_INIT_VCB : {
+			//Wait for the VCB to initialise
+			_dispMain->Display(LAYOUT_STD, ICON_WAIT, FONT_MED, "INITIALISING");
+			_dispButtonLongEn = false;
+			_dispButtonExtendedEn = true;
+			_fsmTmoCtr = FSM_TMO_INIT_VCB;
+
+			//Enable the command processor
+			_cmdProcEn = true;
+
+			//Switch power on
+			#ifdef DEBUG
+				//In debug mode, power everything up locally
+				this->PowerControlOn(PWR_ENABLE_ALL_MASK);
+				//Add a display to so diag mode
+				_displayManager->Set(new CDisplayConfig(DISPLAY_ID_ALERT_DIAG_MODE, LAYOUT_STD, ICON_DIAGNOSTICS, ICON_SUPPLY, FONT_MED, "DIAG PWR"));
+			#else
+				//Power on the rack electronics
+				this->PowerControlOn(PWR_ENABLE_RACK_MASK);
+			#endif
+
+			break;
+		}
+		case BATTDIST_HOME : {
+			//Setup the display for the home screen
+			_dispMain->Display(LAYOUT_STD, ICON_LOGO_SRS);
+			_dispButtonLongEn = false;
+			_dispButtonExtendedEn = true;
+			_fsmTmoCtr = FSM_TMO_HOME;
+
+			break;
+		}
+
+		case BATTDIST_MSG_INFO : {
+			//Move to the first info message in the list
+			_displayManager->MoveFirstInfo();
+			//Switch into the message wait state
+			this->FsmSetState(BATTDIST_MSG_SHOW);
+			break;
+		}
+		case BATTDIST_MSG_ALERT : {
+			//Move to the first alert message in the list
+			_displayManager->MoveFirstAlert();
+			//Switch into the message wait state
+			this->FsmSetState(BATTDIST_MSG_SHOW);
+			break;
+		}
+		case BATTDIST_MSG_NEXT : {
+			//Move to the next message in the list
+			_displayManager->MoveNext();
+			//Switch into the message wait state
+			this->FsmSetState(BATTDIST_MSG_SHOW);
+			break;
+		}
+		case BATTDIST_MSG_SHOW : {
+			//Get the current display from the display manager
+			PDisplayConfig disp = _displayManager->GetDisplay();
+
+			if(!disp) {
+				//If no display is available, show the home screen
+				this->FsmSetState(BATTDIST_HOME);
+			}
+			else {
+				//Copy the next display into the FSM display
+				_dispMain->Assign(disp);
+				_dispButtonLongEn = false;
+				_dispButtonExtendedEn = true;
+				//Set the timeout depending on the message type
+				_fsmTmoCtr = (_dispMain->IsInfo()) ? FSM_TMO_MSG_INFO : FSM_TMO_MSG_ALERT;
+			}
+			break;
+		}
+
+		case BATTDIST_USER_OFF : {
+			//Setup the display for the User "Power Off" question
+			_dispMain->Display(LAYOUT_STD, ICON_POWER, FONT_MED, "TURN OFF?");
+			_dispButtonLongEn = true;
+			_dispButtonExtendedEn = false;
+			_fsmTmoCtr = FSM_TMO_USER;
+			break;
+		}
+		case BATTDIST_USER_DIVE : {
+			//Setup the display for the User "Start Dive" question
+			_dispMain->Display(LAYOUT_STD, ICON_DIVE, FONT_MED, "START DIVE?");
+			_dispButtonLongEn = true;
+			_dispButtonExtendedEn = true;
+			_fsmTmoCtr = FSM_TMO_USER;
+			break;
+		}
+		case BATTDIST_USER_DIVE_START : {
+			//Show a Start Dive Countdown
+			_diveCnt = DISPLAY_DIVE_COUNTDOWN;
+			char buf[8];
+			snprintf(buf, 8, "%u", _diveCnt);
+			_dispMain->Display(LAYOUT_PARAM, ICON_DIVE, FONT_HUGE, "");
+			_dispMain->Text1.assign(string(buf));
+			_dispButtonLongEn = false;
+			_dispButtonExtendedEn = false;
+			_fsmTmoCtr = FSM_TMO_USER_DIVE_START;
+			break;
+		}
+		case BATTDIST_SHUTDOWN : {
+			//Setup the display for the User "Start Dive" question
+			_dispMain->Display(LAYOUT_STD, ICON_POWER, ICON_WAIT, FONT_MED, "TURNING OFF");
+			_dispButtonLongEn = false;
+			_dispButtonExtendedEn = true;
+			_fsmTmoCtr = FSM_TMO_SHUTDOWN;
+			break;
+		}
+		default:
+		case BATTDIST_OFF : {
+			//Turn the power off
+			_dispMain->Display(LAYOUT_STD, ICON_ALERT, ICON_POWER);	//This display should never be seen - if it is the device hasn't turned off
+			_dispButtonLongEn = false;
+			_dispButtonExtendedEn = false;
+			_fsmTmoCtr = 0;
+			this->PowerKill();
+			break;
+		}
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that services the FSM current state
+*/
+void CBattDistMain::FsmService()
+{
+	//Clear the timeout strobe
+	_fsmTmoFlag = false;
+
+	//Decrement the FSM Counter and determine if a timeout period has expired
+	//Only decrease the timeout counter if the button isn't pushed
+	if(_fsmTmr->Poll()) {
+		if(!_buttonState && _fsmTmoCtr > 0) {
+			_fsmTmoCtr--;
+			if(_fsmTmoCtr == 0) {
+				_fsmTmoFlag = true;
+			}
+		}
+	}
+
+	//Service the button state
+	if(_buttonChanged) {
+		switch(_buttonDuration) {
+			default:
+			case BUTTON_NONE : {
+				_display->SetDisplayTemp(NULL);
+				break;
+			}
+			case BUTTON_SHORT : {
+				_display->SetDisplayTemp(NULL);
+				break;
+			}
+			case BUTTON_LONG : {
+				if(_dispButtonLongEn) {
+					//_dispButton->Display(LAYOUT_STD, ICON_PUSH_LONG);
+					_dispButton->Display(LAYOUT_STD, ICON_FACE_SMILE);
+					_display->SetDisplayTemp(_dispButton);
+				}
+				else
+					_display->SetDisplayTemp(NULL);
+				break;
+			}
+			case BUTTON_EXTENDED : {
+				if(_dispButtonExtendedEn) {
+					//_dispButton->Display(LAYOUT_STD, ICON_PUSH_EXTENDED);
+					_dispButton->Display(LAYOUT_STD, ICON_POWER);
+					_display->SetDisplayTemp(_dispButton);
+				}
+				else
+					_display->SetDisplayTemp(NULL);
+				break;
+			}
+			case BUTTON_IGNORE : {
+				_dispButton->Display(LAYOUT_STD, ICON_FACE_FROWN);
+				_display->SetDisplayTemp(_dispButton);
+				break;
+			}
+		}
+	}
+
+	//Service the state machine
+	switch(_fsmState) {
+		default: {
+			//Do nothing in an unknown state...
+			break;
+		}
+
+		case BATTDIST_INIT_ON : {
+			//Wait for the user to confirm "on" with a long push...
+
+			if(_buttonReleased) {
+				if(_buttonDuration == BUTTON_LONG) {
+					//On a long push advance to the initialisation state
+					this->FsmSetState(BATTDIST_INIT_LEAK);
+				}
+			}
+			else if(_fsmTmoFlag) {
+				//If a timeout occurs, then turn off again
+				//(Don't allow this when compiling in debug mode)
+				//#ifndef DEBUG
+				this->FsmSetState(BATTDIST_OFF);
+				//#endif
+			}
+			break;
+		}
+
+		case BATTDIST_INIT_LEAK : {
+			//Wait for the lead-test to complete...
+
+			if(_buttonDuration == BUTTON_EXTENDED) {
+				//If the button is held for an extended period, then kill the power
+				this->FsmSetState(BATTDIST_OFF);
+			}
+			else if(_fsmTmoFlag) {
+//### TODO
+				this->FsmSetState(BATTDIST_INIT_LIM);
+			}
+
+			break;
+		}
+
+		case BATTDIST_INIT_LIM : {
+			//Wait for the LIM test to complete...
+
+			if(_buttonDuration == BUTTON_EXTENDED) {
+				//If the button is held for an extended period, then kill the power
+				this->FsmSetState(BATTDIST_OFF);
+			}
+			else if(_fsmTmoFlag) {
+//### TODO
+				this->FsmSetState(BATTDIST_INIT_VCB);
+			}
+			break;
+		}
+
+		case BATTDIST_INIT_VCB : {
+			//Wait for the VCB to come up an initialise...
+
+			if(_buttonDuration == BUTTON_EXTENDED) {
+				//If the button is held for an extended period, then kill the power
+				this->FsmSetState(BATTDIST_OFF);
+			}
+			/*
+			else if(####) {
+//### TODO
+				//The VCB indicates its good to go, then go to the home screen (start normal operations)
+				this->FsmSetState(BATTDIST_HOME);
+			}
+			*/
+			else if(_fsmTmoFlag) {
+				//If a timeout occurs, then add a VCB timeout warning to the display
+				_displayManager->Set(new CDisplayConfig(DISPLAY_ID_ALERT_VCB_TMO, LAYOUT_STD, ICON_ALERT, ICON_SETTINGS, FONT_MED, "VCB TMO"));
+
+				//Go to the home screen (start normal operations)
+				this->FsmSetState(BATTDIST_HOME);
+			}
+			break;
+		}
+
+		case BATTDIST_HOME : {
+			//The home screen is shown, so wait for the user
+			//to push a button or a timeout to occur...
+
+			if(_buttonReleased) {
+				if(_buttonDuration == BUTTON_SHORT) {
+					//On a short push, go to the user question screens
+					this->FsmSetState(BATTDIST_USER_OFF);
+				}
+				else if(_buttonDuration == BUTTON_EXTENDED) {
+					//On an extended push, ask the user to confirm power off
+					this->FsmSetState(BATTDIST_USER_OFF);
+				}
+			}
+			else if(_fsmTmoFlag) {
+				//A timeout occurs so start showing the alert messages
+				this->FsmSetState(BATTDIST_MSG_ALERT);
+			}
+			break;
+		}
+
+		case BATTDIST_USER_OFF : {
+			//See if the user confirms a Power-Off...
+
+			if(_buttonReleased) {
+				if(_buttonDuration == BUTTON_SHORT) {
+					//On a short push, go to the next user question screen
+					this->FsmSetState(BATTDIST_USER_DIVE);
+				}
+				else if(_buttonDuration == BUTTON_LONG) {
+					//On a long push, confirm turn off - start shutting down
+					this->FsmSetState(BATTDIST_SHUTDOWN);
+				}
+				else if(_buttonDuration == BUTTON_EXTENDED) {
+					//Do nothing on an extended push
+				}
+			}
+			else if(_fsmTmoFlag) {
+				//A timeout occurs so return to the home screen
+				this->FsmSetState(BATTDIST_HOME);
+			}
+			break;
+		}
+
+		case BATTDIST_USER_DIVE : {
+			//See if the user selects a Dive-Start...
+
+			if(_buttonReleased) {
+				if(_buttonDuration == BUTTON_SHORT) {
+					//On a short push, go to the info list
+					this->FsmSetState(BATTDIST_MSG_INFO);
+				}
+				else if(_buttonDuration == BUTTON_LONG) {
+					//On a long push, confirm Dive-Start
+					this->FsmSetState(BATTDIST_USER_DIVE_START);
+				}
+				else if(_buttonDuration == BUTTON_EXTENDED) {
+					//On an extended push, ask the user to confirm power off
+					this->FsmSetState(BATTDIST_USER_OFF);
+				}
+			}
+			else if(_fsmTmoFlag) {
+				//A timeout occurs so return to the home screen
+				this->FsmSetState(BATTDIST_HOME);
+			}
+			break;
+		}
+
+		case BATTDIST_USER_DIVE_START : {
+			//Count down to the start of the dive
+			if(_buttonReleased) {
+				//Abort when the button is pressed
+				this->FsmSetState(BATTDIST_HOME);
+			}
+			else if(_fsmTmoFlag) {
+				//On timeout, decrease the countdown value
+				_diveCnt--;
+				if(_diveCnt == 0) {
+					//Start the dive here
+//###TODO
+					//Return to the HOME screen
+					this->FsmSetState(BATTDIST_HOME);
+				}
+				else {
+					//Show the next count down value
+					char buf[8];
+					snprintf(buf, 8, "%u", _diveCnt);
+					_dispMain->Text1.assign(string(buf));
+					_dispMain->Invalid = true;
+					_fsmTmoCtr = FSM_TMO_USER_DIVE_START;
+				}
+			}
+			break;
+		}
+
+		case BATTDIST_MSG_INFO :	//Should never be in this state here
+		case BATTDIST_MSG_ALERT :	//Should never be in this state here
+		case BATTDIST_MSG_NEXT :	//Should never be in this state here
+
+		case BATTDIST_MSG_SHOW : {
+			//Show a message (alert or info) from the Display manager...
+
+			if(_buttonReleased) {
+				if(_buttonDuration == BUTTON_SHORT) {
+					//On a short push, show the next display (goes to the home screen if no next screen available)
+					this->FsmSetState(BATTDIST_MSG_NEXT);
+				}
+				else if(_buttonDuration == BUTTON_EXTENDED) {
+					//On an extended push, ask the user to confirm power off
+					this->FsmSetState(BATTDIST_USER_OFF);
+				}
+			}
+			else if(_fsmTmoFlag) {
+				//A timeout has occured to change to the next screen
+				if(_dispMain->IsInfo()) {
+					//For information screens, return to the home screen on timeout
+					this->FsmSetState(BATTDIST_HOME);
+				}
+				else {
+					//Show the next screen (goes to the home screen if no next screen available)
+					this->FsmSetState(BATTDIST_MSG_NEXT);
+				}
+			}
+			break;
+		}
+
+		case BATTDIST_SHUTDOWN : {
+			//Wait for the VCB to indicate it has shutdown before killing the power
+			if(_buttonDuration == BUTTON_EXTENDED) {
+				//If the button is held for an extended period, then kill the power
+				this->FsmSetState(BATTDIST_OFF);
+			}
+			/*
+			else if(####) {
+//### TODO
+				//The VCB indicates indicates its ok to shutdown
+				this->FsmSetState(BATTDIST_OFF);
+			}
+			*/
+			else if(_fsmTmoFlag) {
+				//If a timeout occurs, then force a turn off
+				this->FsmSetState(BATTDIST_OFF);
+			}
+			break;
+		}
+
+		case BATTDIST_OFF : {
+			//Do nothing as the power should have been turned off...
+			break;
+		}
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that applies a new configuration to the power switchgear control outputs
+*/
+void CBattDistMain::PowerControl(uint8 mask, uint8 state)
+{
+	//Store the new configuration
+	uint8 ctrl = _powerCtrl;
+	CLR_BITS(ctrl, mask);
+	SET_BITS(ctrl, state & mask);
+	_powerCtrl = ctrl;
+
+	PWR_SW(0, IS_BIT_SET(_powerCtrl, PWR_ENABLE_THR1_BIT));		//Thruster 1 Power
+	PWR_SW(1, IS_BIT_SET(_powerCtrl, PWR_ENABLE_THR2_BIT));		//Thruster 2 Power
+	PWR_SW(2, IS_BIT_SET(_powerCtrl, PWR_ENABLE_THR3_BIT));		//Thruster 3 Power
+	PWR_SW(3, IS_BIT_SET(_powerCtrl, PWR_ENABLE_THR4_BIT));		//Thruster 4 Power
+	PWR_SW(4, IS_BIT_SET(_powerCtrl, PWR_ENABLE_THR5_BIT));		//Thruster 5 Power
+	PWR_SW(5, IS_BIT_SET(_powerCtrl, PWR_ENABLE_THR6_BIT));		//Thruster 6 Power
+	PWR_SW(6, IS_BIT_SET(_powerCtrl, PWR_ENABLE_DEVDIST_BIT));	//Device-Distribution Boards (Front and Rear) Power
+	PWR_SW(7, IS_BIT_SET(_powerCtrl, PWR_ENABLE_RACK_BIT));		//Rack Electronics Power
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CBattDistMain::PowerControlOn(uint8 mask)
+{
+	this->PowerControl(mask, 0xFF);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CBattDistMain::PowerControlOff(uint8 mask)
+{
+	this->PowerControl(mask, 0x00);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that applies a new configuration to the power switchgear control outputs
+*/
+void CBattDistMain::PowerKill()
+{
+	//Turn off all subsystems first
+	this->PowerControlOff(PWR_ENABLE_ALL_MASK);
+
+	//Wait for comms to complete and sub-systems to go off
+	CSysTick::WaitMilliseconds(200);
+
+	//Go into a loop forever, attempting to turn off
+	IRQ_DISABLE;
+	while(true) {
+		//Apply the kill signal
+		PWR_MASTER_OFF;
+		NOP;
+		NOP;
+		NOP;
+		NOP;
+	};
+}
+
+//==============================================================================
+

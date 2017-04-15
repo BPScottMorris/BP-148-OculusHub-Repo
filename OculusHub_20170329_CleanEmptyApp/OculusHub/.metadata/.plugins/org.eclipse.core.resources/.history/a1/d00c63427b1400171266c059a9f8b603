@@ -1,0 +1,70 @@
+#include "oculushub_main.hpp"
+
+//==============================================================================
+//Class Implementation...
+//==============================================================================
+//COculusHubMain
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor that initialises the hardware and operating systems
+*/
+COculusHubMain::COculusHubMain()
+{
+
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+COculusHubMain::~COculusHubMain()
+{
+}
+
+/*!-----------------------------------------------------------------------------
+Function called when a CID_SYS_REBOOT command has been issued, allowing the
+system to shut down services.
+*/
+void COculusHubMain::DoReboot()
+{
+}
+
+/*!-----------------------------------------------------------------------------
+Function called to start the application running
+*/
+void COculusHubMain::DoRun()
+{
+
+	/*
+	//Output some status information
+	COM_PRINT("%s\r\n", CSI_RESET_LINE);
+	COM_PRINT("SRS FUSION BATTERY-DISTRIBUTION\r\n");
+	//COM_PRINT("Copyright (c) 2016 Strategic Robotic Systems Inc. All rights reserved.\r\n");
+	//COM_PRINT("For further information, visit http://www.srsfusion.com\r\n");
+	COM_PRINT("v%u.%u.%u (%s)", FIRMWARE_VERSION_MAJOR, FIRMWARE_VERSION_MINOR, FIRMWARE_VERSION_BUILD, FIRMWARE_DATE);
+	DEBUG_PRINT(" [DEBUG]");
+	COM_PRINT("\r\n");
+	*/
+
+	//Start the main loop
+	while(_run) {
+
+		//Service the command processor
+		//_cmd->Service();
+
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that handles the action event from the flash programmer
+*/
+void COculusHubMain::FlashProgActionEvent(PFlashProgActionParams params)
+{
+	switch(params->Action) {
+		case FPROG_ACTION_PROG_INIT :
+		case FPROG_ACTION_PROG_UPDATE :
+		case FPROG_ACTION_UPDATE_START : {
+			break;
+		}
+	}
+}
+
+//==============================================================================

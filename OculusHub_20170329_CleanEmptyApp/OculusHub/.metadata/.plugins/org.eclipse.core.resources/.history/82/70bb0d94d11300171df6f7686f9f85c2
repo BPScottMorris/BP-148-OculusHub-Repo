@@ -1,0 +1,187 @@
+/*==============================================================================
+==============================================================================*/
+//Prevent multiple inclusions of this file
+#ifndef BATTDIST_MAIN_HPP
+#define BATTDIST_MAIN_HPP
+
+//==============================================================================
+//Library Includes
+//==============================================================================
+#include "battdist.hpp"
+
+//Include helper classes
+#include "maths.hpp"
+
+//Include device drivers
+#include "spi.hpp"
+#include "dac.hpp"
+#include "adc.hpp"
+
+//Include the system level classes
+#include "spi_ssd1306.hpp"
+#include "gdi_defs.hpp"
+#include "gdi_device_ssd1306.hpp"
+//#include "analogue.hpp"
+
+#include "display.hpp"
+#include "display_manager.hpp"
+
+//###TODO For Jesse's testing purposes, permanently enable debug mode
+#ifndef DEBUG
+	#define DEBUG
+	#undef NDEBUG
+#endif
+
+//==============================================================================
+//Class Definitions...
+//==============================================================================
+/*! Enumeration defining the states the BattDist FSM operates in */
+enum EBattDistFsm {
+	BATTDIST_OFF = 0x00,
+	BATTDIST_SHUTDOWN = 0x01,
+	BATTDIST_RESTART = 0x02,
+	//Initialisation states (must be between 0x10 and 0x1F)
+	BATTDIST_INIT_ON = 0x10,
+	BATTDIST_INIT_LEAK = 0x11,
+	BATTDIST_INIT_LIM = 0x12,
+	BATTDIST_INIT_VCB = 0x13,
+	//Home Screen
+	BATTDIST_HOME = 0x20,
+	//Messages being displayed
+	BATTDIST_MSG_INFO = 0x30,
+	BATTDIST_MSG_ALERT = 0x31,
+	BATTDIST_MSG_NEXT = 0x32,
+	BATTDIST_MSG_SHOW = 0x33,
+	BATTDIST_USER_OFF = 0x40,
+	BATTDIST_USER_DIVE = 0x41,
+	BATTDIST_USER_DIVE_START = 0x42,
+
+};
+
+//------------------------------------------------------------------------------
+/*! Enumeration specifying how long the button has/was held for */
+enum EButtonDuration {
+	BUTTON_NONE = 0x0,
+	BUTTON_SHORT = 0x1,
+	BUTTON_LONG = 0x2,
+	BUTTON_EXTENDED = 0x4,
+	BUTTON_IGNORE = 0x8,
+};
+
+//------------------------------------------------------------------------------
+//Display ID codes
+#define DISPLAY_ID_INFO_VACUUM		0x10
+
+#define DISPLAY_ID_ALERT_DIAG_MODE	0x90
+#define DISPLAY_ID_ALERT_VCB_TMO	0x91
+
+//Countdown start value for Dive-Start
+#define DISPLAY_DIVE_COUNTDOWN		10
+
+//------------------------------------------------------------------------------
+/*!
+Class that provides base hardware and operating system objects for the platform,
+other application classes are derived from this
+*/
+class CBattDistMain : public CBattDist {
+	private:
+		//Private Methods
+		typedef CBattDist base;									/*!< Declare access to the parent class */
+
+	protected:
+		//Hardware Devices
+		PAdcDevice			_adc12V;							/*!< Pointer to the ADC0 device */
+		PAdcDevice			_adc5V;								/*!< Pointer to the ADC1 device */
+		PSpiPort			_spi;								/*!< Pointer to an SPI device */
+
+		PSpiSSD1306			_spiOled;							/*!< Pointer to the SPI OLED display driver interface */
+
+		PGdiDeviceSSD1306	_gdiOled;							/*!< Pointer to a GDI device than controls the display */
+
+		PDisplay			_display;							/*!< Pointer to a class that manages the display */
+		PDisplayManager		_displayManager;					/*!< Pointer to a class that manages messaging displays */
+		PDisplayConfig		_dispMain;							/*!< Pointer to a display configuration controlled by the fsm */
+		PDisplayConfig		_dispButton;						/*!< Pointer to a display configuration controlled by the button status */
+		bool				_dispButtonLongEn;					/*!< Flag that is set to true if the "Long Push" button icon can be shown */
+		bool				_dispButtonExtendedEn;				/*!< Flag that is set to true if the "Long Push" button icon can be shown */
+
+		//System Objects
+		//PAdcChannel		_adcChannel12V;						/*!< Pointer to the ADC channel reading the 12V */
+		//PAdcChannel		_adcChannel5V;						/*!< Pointer to the ADC channel reading the 5V */
+		//PAnalogue			_analogue;							/*!< Service that implements the analogue sensor subsystem */
+		//PFlashData		_flashSettings;						/*!< Class implementing non-volatile storage for the settings */
+
+		//Application settings
+		//TAppSettings		_settings;							/*!< Settings struct, that is loaded from non-volatile memory and can be updated by the user commands */
+
+		//Variables
+		PTickTimer			_buttonTmr;							/*!< Timer used to read and debounce the button state signals */
+		bool				_buttonRaw;							/*!< The raw state of the button */
+		uint16				_buttonRawCnt;						/*!< Count-down value used to debounce the button state */
+		bool				_buttonPressed;						/*!< Strobe asserted when the debounced button state goes from released to pressed */
+		bool				_buttonReleased;					/*!< Strobe asserted when the debounced button state goes from pressed to released */
+		bool 				_buttonChanged;						/*!< Strobe asserted when the button duration changes state */
+		EButtonDuration		_buttonDuration;					/*!< Holds the type of the button press */
+		bool				_buttonState;						/*!< Flag asserted when the debounced button state is pressed */
+		bool				_buttonStateLatch;
+		bool				_buttonHeld;						/*!< Flag asserted when the debounced button state has been held pressed for more than the specified held-time */
+		bool				_buttonHeldLatch;
+
+		bool				_cmdProcEn;							/*!< Flag set high to enable command processing */
+
+		uint8				_powerCtrl;							/*!< The configuration flags for bit outputs */
+
+		PTickTimer			_faultTmr;							/*!< Timer used to read and de-glitch the power control fault flag signals */
+		uint8				_faultRaw;							/*!< Register of fault bits read from the hardware */
+		uint16				_faultRawCnt[PWR_FAULTS];			/*!< Count down timers used to de-glitch fault signals */
+		uint8				_faultState;						/*!< Register of de-glitched fault flags */
+		uint8				_faultStateLatch;					/*!< Register of latched fault flags, cleared when the status is read */
+
+		EBattDistFsm		_fsmState;							/*!< Holds the state of the system FSM */
+		PTickTimer			_fsmTmr;							/*!< Period timer used to time actions in the FSM */
+		uint16				_fsmTmoCtr;							/*!< Count-down timeout value decremented by the state timer */
+		bool				_fsmTmoFlag;						/*!< Strobed flag (for one main loop cycle) that is asserted when an FSM timeout occurs */
+
+		uint8				_diveCnt;
+
+		//Protected Methods
+		bool ButtonService();
+		void CmdExecuteEvent(PCmdProcExecute params);			/*!< Handler that processes received serial commands */
+		void CmdExecute_Config(PCmdProcExecute exe);
+		void CmdExecute_DispEnable(PCmdProcExecute exe);
+		void CmdExecute_LimTest(PCmdProcExecute exe);
+		void CmdExecute_MsgClear(PCmdProcExecute exe);
+		void CmdExecute_MsgGet(PCmdProcExecute exe);
+		void CmdExecute_MsgList(PCmdProcExecute exe);
+		void CmdExecute_MsgRemove(PCmdProcExecute exe);
+		void CmdExecute_MsgSet(PCmdProcExecute exe);
+		void CmdExecute_MsgShow(PCmdProcExecute exe);
+		void CmdExecute_PowerKill(PCmdProcExecute exe);
+		void CmdExecute_PowerRestart(PCmdProcExecute exe);
+		void CmdExecute_PowerShutdown(PCmdProcExecute exe);
+		void CmdExecute_Status(PCmdProcExecute exe);
+		void DoReboot();
+		void DoRun();
+		uint8 FaultsRead();
+		void FaultsService();
+		void FlashProgActionEvent(PFlashProgActionParams params);
+
+		void FsmSetState(EBattDistFsm state);
+		void FsmService();
+
+		void PowerControl(uint8 mask, uint8 state);
+		void PowerControlOn(uint8 mask);
+		void PowerControlOff(uint8 mask);
+		void PowerKill() __attribute__ ((noreturn));			/*!< Power Off goes into a loop and does not return */
+
+	public:
+		//Construction & Disposal
+		CBattDistMain();
+		virtual ~CBattDistMain();
+};
+
+/*! Define a pointer to an application object */
+typedef CBattDistMain* PBattDistMain;
+
+//==============================================================================
+#endif

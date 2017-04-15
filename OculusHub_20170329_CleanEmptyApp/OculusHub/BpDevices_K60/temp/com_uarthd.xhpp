@@ -1,0 +1,49 @@
+/*==============================================================================
+C++ Module that provides the definitions and implementation for a wrapper class
+to provide management and access functions for a Half-Duplex UART
+peripheral.
+
+05/09/2016 - Created v1.0 of file (R.Sharphouse)
+==============================================================================*/
+//Prevent multiple inclusions of this file
+#ifndef COM_UARTHD_HPP
+#define COM_UARTHD_HPP
+
+//Include the base class
+#include "com_uart.hpp"
+
+//Include class libraries
+#include "callback.hpp"
+
+//==============================================================================
+//Class Definition...
+//==============================================================================
+/*! Define a callback event to allow external hardware to control the TxEnable for Half-Duplex applications */
+typedef CCallback1<void, bool> CComUartTxModeCallback;
+
+//------------------------------------------------------------------------------
+//Predefine the class
+class CComUartHd;
+
+/*! Define a pointer to a serial port */
+typedef CComUartHd* PComUartHd;
+
+/*! Define a class that creates an interface to a hardware UART */
+class CComUartHd : public CComUart {
+	private:
+		typedef CComUart	base;					/*!< Allow access to the base class properties */
+
+	protected:
+		//Protected methods
+		void DoTxMode(bool state, bool force = false);
+
+	public:
+		//Constructor
+		using CComUart::CComUart;	//Inherit base class constructors (C++11)
+
+		//Event Callbacks
+		CComUartTxModeCallback OnTxModeISR;
+};
+
+//==============================================================================
+#endif

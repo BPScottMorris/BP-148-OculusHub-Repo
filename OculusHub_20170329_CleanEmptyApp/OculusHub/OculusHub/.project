@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<projectDescription>
+	<name>SrsThruster</name>
+	<comment></comment>
+	<projects>
+		<project>BpApplication</project>
+		<project>BpClasses</project>
+		<project>BpDevices_K22</project>
+	</projects>
+	<buildSpec>
+	</buildSpec>
+	<natures>
+	</natures>
+</projectDescription>

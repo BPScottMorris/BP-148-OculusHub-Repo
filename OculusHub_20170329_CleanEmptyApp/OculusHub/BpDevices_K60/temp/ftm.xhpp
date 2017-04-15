@@ -1,0 +1,181 @@
+/*==============================================================================
+C++ Module that provides the definitions and implementation for a class that
+provides basic functionality for using a Flex-Timer Module (FTM).
+For specific FTM functionality, further classes should inherit from the FTM class
+
+Interrupt support is provided by using a global array that stores pointers to
+instances of the FTM object bound to each hardware FTM peripheral on the device.
+When an IRQ occurs, a C style function then calls the SerivceIRQ method of the
+relevant FTM object instance.
+If another FTM is bound to the IRQ, then further FTM's cannot be created on the
+same device.
+
+For legacy code (or those not wishing to use this mechanism), the IRQ procedure
+can be deactivated on an FTM by FTM basis by defining the FTMx_CONNECT_IRQ constant
+to be "false" (or 0)
+
+01/08/2016 - Created V1.2 of file, modified for KDS environment
+18/11/2013 - Created V1.1 of file, adding more control properties for adjusting frequencies etc.
+12/09/2013 - Created V1.0 of file, RSh (with input from KWe)
+==============================================================================*/
+//Prevent multiple inclusions of this file
+#ifndef FTM_HPP
+#define FTM_HPP
+
+//Include system libraries
+//#include <cmath>
+
+//Include common type definitions and macros
+#include "common.h"
+#include "callback.hpp"
+
+//Include the processor platform
+#include "processor.h"
+
+//Include the MCG device to get clock timings
+#include "mcg.hpp"
+
+//==============================================================================
+//Class Definition...
+//==============================================================================
+/*! Enumeration defining the source of the FTM clock when started */
+enum EFtmClkSource {
+	FTM_CLKSRC_NONE = 0,
+	FTM_CLKSRC_BUSCLK = 1,
+	FTM_CLKSRC_FFCLK = 2,
+	FTM_CLKSRC_EXTCLK = 3
+};
+
+/*! Defines the available FTM clock prescalars - the enumerated value is the power-of-2 factor of the prescalar! */
+enum EFtmClkPrescalar {
+	FTM_CLKPS_DIV1 = 0,
+	FTM_CLKPS_DIV2 = 1,
+	FTM_CLKPS_DIV4 = 2,
+	FTM_CLKPS_DIV8 = 3,
+	FTM_CLKPS_DIV16 = 4,
+	FTM_CLKPS_DIV32 = 5,
+	FTM_CLKPS_DIV64 = 6,
+	FTM_CLKPS_DIV128 = 7
+};
+
+/*! Define the possible dead-time prescalar values (Ordinal assignments are important!) */
+enum EFtmDeadtimePrescalar {
+	FTM_DTPS_DIV1 = 0,
+	FTM_DTPS_DIV4 = 2,
+	FTM_DTPS_DIV16 = 3,
+};
+
+/*! Enumeration that specifies the available channel pairings */
+enum EFtmChannelPair {
+	FTM_CHANPAIR_01 = 0,
+	FTM_CHANPAIR_23 = 1,
+	FTM_CHANPAIR_45 = 2,
+	FTM_CHANPAIR_67 = 3
+};
+
+//------------------------------------------------------------------------------
+//Pre-declare the class
+class CFtm;
+
+/*! Define a pointer to a Flex-Timer Module */
+typedef CFtm* PFtm;
+
+/*!
+Define a class that creates an instance of an object that provides low level
+access to a FlexTimer module an connects to interrupts
+Other classes wishing to use an FTM should derive from this class
+*/
+class CFtm {	
+	private:
+	
+	protected:
+		//Protected variables	
+		FTM_Type*			_ftm;							/*!< Pointer to the Flex Timer Module to use for PWM transmission */			
+		EFtmClkPrescalar	_clkPrescalar;
+		EFtmClkSource		_clkSource;
+		uint16				_cntInit;						/*!< Initial value to load into the counter when the FTM is started */
+		bool				_enabled;						/*!< Flag is true when the FTM system clock is enabled */
+		uint8				_id;							/*!< The flex timer to use */
+		bool				_isrEnabled;					/*!< True if interrupts are enabled */
+		uint16				_modulo;						/*!< The modulo value to load into the FTM (setting its frequency) when the timer is started */
+		bool				_started;						/*!< True when the timer has been started */
+		
+		//Protected methods			
+		virtual void		DoStart();
+		virtual void		DoStop();
+		void				SetNvicEnabled(bool state);		
+		
+	public:
+		//Construction & Disposal
+		CFtm(uint8 ftmId);
+		virtual ~CFtm();
+		
+		//Methods
+		void				DoISR();						/*!< Method that is called to handle an FTM IRQ */
+		uint32				GetFrequency();
+		FTM_Type*			GetRegisters();
+		bool 				IsEnabled();
+		bool				IsStarted();
+		void				SetClkPrescalar(EFtmClkPrescalar value);
+		void				SetClkSource(EFtmClkSource value);
+		bool				SetEnabled(bool state);
+		bool 				SetFrequencyAuto(uint32 value);
+		bool				SetFrequency(uint32 value);
+		void				SetIsrEnabled(bool state);
+		void				SetModulo(uint16 value);
+		bool				Start();
+		void				Stop();
+		
+		//Events
+		CCallback 			OnISR;
+		
+		//Static Variables		
+		static PFtm Ftm[FTM_PERIPHERALS];					/*!< Global method pointer for interrupt handlers */
+};
+
+//==============================================================================
+//Hardware Interrupt Handlers...
+//==============================================================================
+#ifndef FTM_PERIPHERALS
+	PRAGMA_ERROR("Number of FTM peripherals not defined")
+#endif
+
+//If previous modules havn't enabled an CFtm objects ability to connect to
+//an IRQ, then disable the mapping
+#ifndef FTM0_CONNECT_IRQ
+	#define FTM0_CONNECT_IRQ	false
+#endif
+#ifndef FTM1_CONNECT_IRQ
+	#define FTM1_CONNECT_IRQ	false
+#endif
+#ifndef FTM2_CONNECT_IRQ
+	#define FTM2_CONNECT_IRQ	false
+#endif
+#ifndef FTM3_CONNECT_IRQ
+	#define FTM3_CONNECT_IRQ	false
+#endif
+
+//Include prototypes for required hardware Interrupt handlers (See Interrupt Vector Table)
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#if FTM0_CONNECT_IRQ
+void ISR_FTM0(void)	__attribute__ ((interrupt));
+#endif
+#if FTM1_CONNECT_IRQ
+void ISR_FTM1(void)	__attribute__ ((interrupt));
+#endif
+#if FTM2_CONNECT_IRQ
+void ISR_FTM2(void)	__attribute__ ((interrupt));
+#endif
+#if FTM3_CONNECT_IRQ
+void ISR_FTM3(void)	__attribute__ ((interrupt));
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+//==============================================================================
+#endif

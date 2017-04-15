@@ -1,0 +1,389 @@
+/*==============================================================================
+The "Platform.h" file specifies all the common definitions and macros
+that are available across all objects within the class heirachy, this may
+include hardware definitions required by low-level modules to higher level
+objects.
+==============================================================================*/
+//Prevent multiple inclusions of this file
+#ifndef PLATFORM_H
+#define PLATFORM_H
+
+//Include common type definitions and macros
+#include "common.h"
+
+//CMSIS related definitions
+//#include "processor.h"
+
+//------------------------------------------------------------------------------
+#if defined(DEBUG)
+	PRAGMA_INFO("Compiling DEBUG firmware")
+#else
+	PRAGMA_INFO("Compiling RELEASE firmware")
+#endif
+
+//------------------------------------------------------------------------------
+//Firmware & Hardware Information (& PCB Revision)
+//------------------------------------------------------------------------------
+//Define available flash programmer sections
+#define FLASH_SECTION_BOOT				0
+#define FLASH_SECTION_MAIN				1
+
+//Define hardware part numbers for different products
+#define HARDWARE_PARTNUMBER				1121			/*!< Part number for the product */
+#define HARDWARE_PARTREV				1				/*!< Part revision for the product */
+
+#define FIRMWARE_DATE					__DATE__		/*!< String containing software build date */
+
+//Include the platform version definitions, separated to another file,
+//so a command line auto-inc tool can easily parse and modify without making
+//changes to this file.
+#include "version.h"
+
+//------------------------------------------------------------------------------
+//Flash Memory Configuration
+//------------------------------------------------------------------------------
+/*! Size of Flash area - 512kb size */
+#define FLASH_SIZE						0x00080000
+
+/*! Program Flash sector size - 4kB size */
+#define FLASH_SECTOR_SIZE				0x00001000
+
+/*! Program Flash block size, 256kB */
+#define FLASH_BLOCK_SIZE				0x00040000
+
+//#define FLASH_BOOT_START				0x00000410			/*!< Boot loader starting address */
+#define FLASH_BOOT_START				0x00000000			/*!< Boot loader starting address */
+#define FLASH_BOOT_SIZE					0x00010000			/*!< Boot loader size */
+
+#define FLASH_MAIN_START				(FLASH_BOOT_SIZE)	/*!< Main application starting address, 64kb */
+#define FLASH_MAIN_SIZE					0x00030000			/*!< Main application size, 196kb */
+
+#define FLASH_SCRATCH_START				0x00040000			/*!< Temporary programming area starting address */
+#define FLASH_SCRATCH_SIZE				(FLASH_MAIN_SIZE)	/*!< Temporary programming area size - same as main application */
+
+#define FLASH_SETTINGS_START			0x00070000			/*!< Settings data - 56kb, 14 x 4kb sectors of memory */
+#define FLASH_SETTINGS_SIZE				0x0000F000
+
+#define FLASH_PROGINFO_START			0x0007F000			/*!< Program Identification data - 1 x 4kb sector of memory */
+#define FLASH_PROGINFO_SIZE				0x00001000
+
+#define FLASH_HASH_KEY					"H6f4T5mqS2xXDukL"	/*!< Defines a string used as part of the hashing process to sign firmware, for decryption and user access - must be 16 chars long min*/
+
+#define FLASH_PROG_BLOCK_MAX			128					/*! Maximum number of bytes in a flash programming block */
+
+//------------------------------------------------------------------------------
+//Define the bit values of the Hardware Flags field
+
+//------------------------------------------------------------------------------
+//Settings Default Values
+//------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
+//Clock & Oscillator Configuration
+//------------------------------------------------------------------------------
+#define SYSTICK_TIMER_FREQ				10000.0				/*!< Define the frequency of the SysTick Timer overflow timebase */
+
+//------------------------------------------------------------------------------
+//UART Configuration
+//------------------------------------------------------------------------------
+//Route GetChar/PutChar PrintF requests through the CUart handler
+#define COM_TERMINAL					true
+
+//Define the number of supported UART peripherals
+#define UART_PERIPHERALS	 			4
+
+//Enable UART IRQ's...
+#define UART0_CONNECT_IRQ				true			/*! For external communications */
+//#define UART1_CONNECT_IRQ				true			/*! For debug communications */
+//#define UART2_CONNECT_IRQ				true
+//#define UART3_CONNECT_IRQ				true
+
+//Define the setup each logical uart object uses...
+#define UART_COMMS						0				/*! Map to UART0 */
+#define UART_COMMS_TX_BUFFER			512
+#define UART_COMMS_RX_BUFFER			128
+
+#define UART_DEBUG						1				/*! Map to UART1 */
+//#define UART_DEBUG_TX_BUFFER			512
+//#define UART_DEBUG_RX_BUFFER			128
+
+/*! Define the Address the device responds to for serial comms */
+#define	DEVICE_ADDR						0x81
+
+//------------------------------------------------------------------------------
+//FTM Configuration
+//------------------------------------------------------------------------------
+#define FTM_PERIPHERALS					4				/*!< Defines the number of FTM peripherals available in the device */
+
+//#define FTM0_CONNECT_IRQ				true
+//#define FTM1_CONNECT_IRQ				true
+//#define FTM2_CONNECT_IRQ				true
+//#define FTM3_CONNECT_IRQ				true
+
+//------------------------------------------------------------------------------
+//SPI Configuration
+//------------------------------------------------------------------------------
+#define SPI_PERIPHERALS					2				/*!< Defines the number of SPI peripherals available in the device */
+
+#define SPI_OLED_ID						0				/*!< OLED display connected to SPI0 module */
+#define SPI_OLED_CHAN					0				/*!< OLED display uses chip-select 0 */
+
+//Define macros for the OLED display driver
+#define SPI_SSD1306_IO_MODE_CMD			OLED_MODE_CMD
+#define SPI_SSD1306_IO_MODE_DATA		OLED_MODE_DATA
+
+
+//------------------------------------------------------------------------------
+//ADC Configuration
+//------------------------------------------------------------------------------
+#define ADC_PERIPHERALS					2				/*!< Define the number of supported ADC devices */
+
+#define ADC0_CONNECT_IRQ				true			/*!< For 12V supply measurements */
+#define ADC1_CONNECT_IRQ				true			/*!< For 5V supply measurements */
+
+#define ADC_VREF						3.3
+#define ADC_BITS						16
+#define ADC_MAX_VAL						(BIT(ADC_BITS) - 1)
+
+#define ADC_5V_ID						0				/*!< Define the ID of the ADC device for 5V measurements */
+#define ADC_5V_CHAN						23
+#define ADC_5V_R1						30.0			/*!< Value of top resistor in external potential divider, in kOhms */
+#define ADC_5V_R2						20.0			/*!< Value of bottom resistor in external potential divider, in kOhms */
+
+#define ADC_12V_ID						1				/*!< Define the ID of the ADC device for 12V measurements*/
+#define ADC_12V_CHAN					18
+#define ADC_12V_R1						100.0			/*!< Value of top resistor in external potential divider, in kOhms */
+#define ADC_12V_R2						20.0			/*!< Value of bottom resistor in external potential divider, in kOhms */
+
+//------------------------------------------------------------------------------
+//DAC Configuration
+//------------------------------------------------------------------------------
+#define DAC_PERIPHERALS					1				/*!< Defines the number of supported DAC peripherals in the device */
+#define DAC_BITS						12
+
+//------------------------------------------------------------------------------
+//Analogue Sensor Service
+//------------------------------------------------------------------------------
+#define ANALOGUE_SERVICE_FREQ			10.0			/*!< Define the frequency the analogue sensor service runs at */
+
+//------------------------------------------------------------------------------
+#define BUTTON_SERVICE_FREQUENCY		50				/*!< Frequency that button is read at */
+
+#define BUTTON_SHORT_PRESS_DURATION		0.1				/*!< Seconds that button must be pressed for to classify as a "short press" */
+#define BUTTON_LONG_PRESS_DURATION		3				/*!< Seconds that button must be pressed for to classify as a "long press" */
+#define BUTTON_EXTENDED_PRESS_DURATION	8				/*!< Seconds that button must be pressed for to classify as a "extended press" */
+#define BUTTON_IGNORE_PRESS_DURATION	13				/*!< Seconds that button must be pressed for to classify as a "ignore press" */
+
+#define BUTTON_SHORT_PRESS_COUNTS		(BUTTON_SERVICE_FREQUENCY * BUTTON_SHORT_PRESS_DURATION)
+#define BUTTON_LONG_PRESS_COUNTS		(BUTTON_SERVICE_FREQUENCY * BUTTON_LONG_PRESS_DURATION)
+#define BUTTON_EXTENDED_PRESS_COUNTS	(BUTTON_SERVICE_FREQUENCY * BUTTON_EXTENDED_PRESS_DURATION)
+#define BUTTON_IGNORE_PRESS_COUNTS		(BUTTON_SERVICE_FREQUENCY * BUTTON_IGNORE_PRESS_DURATION)
+
+//------------------------------------------------------------------------------
+#define FAULT_SERVICE_FREQUENCY			50				/*!< Frequency that faults are timed/de-glitched at */
+#define FAULT_ACTIVE_DURATION			0.2				/*!< Seconds that fault must be assert for before being interpreted as active */
+
+#define FAULT_ACTIVE_COUNTS				(FAULT_SERVICE_FREQUENCY * FAULT_ACTIVE_DURATION)
+
+//------------------------------------------------------------------------------
+#define FSM_SERVICE_FREQUENCY			10				/*!< Frequency that FSM timer works at */
+
+#define FSM_TMO_POWER_ON				(FSM_SERVICE_FREQUENCY * 5)
+#define FSM_TMO_INIT_LEAK				(FSM_SERVICE_FREQUENCY * 2)
+#define FSM_TMO_INIT_LIM				(FSM_SERVICE_FREQUENCY * 2)
+#define FSM_TMO_INIT_VCB				(FSM_SERVICE_FREQUENCY * 5)		/*!< Timeout to wait for the VCB to report Good-To-Go */
+#define FSM_TMO_HOME					(FSM_SERVICE_FREQUENCY * 3)
+#define FSM_TMO_USER					(FSM_SERVICE_FREQUENCY * 10)
+#define FSM_TMO_USER_DIVE_START			(FSM_SERVICE_FREQUENCY * 1)		/*!< Count down period for dive-start countdown */
+#define FSM_TMO_MSG_INFO				(FSM_SERVICE_FREQUENCY * 10)
+#define FSM_TMO_MSG_ALERT				(FSM_SERVICE_FREQUENCY * 2)
+#define FSM_TMO_SHUTDOWN				(FSM_SERVICE_FREQUENCY * 10)
+
+//------------------------------------------------------------------------------
+//Power control and fault bits
+#define PWR_ENABLE_THR1_BIT				0		/*!< Power Switch 0 */
+#define PWR_ENABLE_THR2_BIT				1		/*!< Power Switch 1 */
+#define PWR_ENABLE_THR3_BIT				2		/*!< Power Switch 2 */
+#define PWR_ENABLE_THR4_BIT				3		/*!< Power Switch 3 */
+#define PWR_ENABLE_THR5_BIT				4		/*!< Power Switch 4 */
+#define PWR_ENABLE_THR6_BIT				5		/*!< Power Switch 5 */
+#define PWR_ENABLE_DEVDIST_BIT			6		/*!< Power Switch 6 */
+#define PWR_ENABLE_RACK_BIT				7		/*!< Power Switch 7 */
+
+
+#define PWR_ENABLE_THR1_MASK			BIT(PWR_ENABLE_THR1_BIT)
+#define PWR_ENABLE_THR2_MASK			BIT(PWR_ENABLE_THR2_BIT)
+#define PWR_ENABLE_THR3_MASK			BIT(PWR_ENABLE_THR3_BIT)
+#define PWR_ENABLE_THR4_MASK			BIT(PWR_ENABLE_THR4_BIT)
+#define PWR_ENABLE_THR5_MASK			BIT(PWR_ENABLE_THR5_BIT)
+#define PWR_ENABLE_THR6_MASK			BIT(PWR_ENABLE_THR6_BIT)
+#define PWR_ENABLE_DEVDIST_MASK			BIT(PWR_ENABLE_DEVDIST_BIT)
+#define PWR_ENABLE_RACK_MASK			BIT(PWR_ENABLE_RACK_BIT)
+
+#define PWR_ENABLE_THR_MASK				(PWR_ENABLE_THR1_MASK | PWR_ENABLE_THR2_MASK | PWR_ENABLE_THR3_MASK | PWR_ENABLE_THR4_MASK | PWR_ENABLE_THR5_MASK | PWR_ENABLE_THR6_MASK)
+#define PWR_ENABLE_ALL_MASK				0xFF
+
+/*! Define the number of power control fault signals we monitor */
+#define PWR_FAULTS						8
+
+#define PWR_FAULT_THR1_BIT				0
+#define PWR_FAULT_THR2_BIT				1
+#define PWR_FAULT_THR3_BIT				2
+#define PWR_FAULT_THR4_BIT				3
+#define PWR_FAULT_THR5_BIT				4
+#define PWR_FAULT_THR6_BIT				5
+#define PWR_FAULT_DEVDIST_BIT			6
+#define PWR_FAULT_RACK_BIT				7
+
+//------------------------------------------------------------------------------
+//OLED Display
+//------------------------------------------------------------------------------
+#define DISP_SERVICE_FREQUENCY			10				/*!< Frequency that the display is updated with changes */
+
+#define DISP_BLANK_TMO_DURATION			10				/*!< If the display is set to off, but woken up, this is the timeout in seconds before it goes off again */
+
+#define DISP_BLANK_TMO_COUNTS			(DISP_SERVICE_FREQUENCY * DISP_BLANK_TMO_DURATION)
+
+#define DISP_TEXT_MAX_LEN				16				/*!< Maxium number of characters allowed in each display text string */
+
+//------------------------------------------------------------------------------
+//Macros for controlling IO signals
+//------------------------------------------------------------------------------
+#define PWR_MASTER_ON					PTA->PSOR = BIT(4)				/*!< Set the KILL# signal high - power on */
+#define PWR_MASTER_OFF					PTA->PCOR = BIT(4)				/*!< Set the KILL# signal low - power off */
+
+#define PWR_BUTTON						IS_BIT_CLR(PTB->PDIR, 2)
+
+#define UART0_MODE_RX					PTB->PCOR = BIT(3)
+#define UART0_MODE_TX					PTB->PSOR = BIT(3)
+
+#define OLED_MODE_DATA					PTB->PSOR = BIT(10)
+#define OLED_MODE_CMD					PTB->PCOR = BIT(10)
+#define OLED_MODE(state)				{ if(state) { OLED_MODE_DATA; } else { OLED_MODE_CMD; } }
+
+#define OLED_PWR_ON						PTB->PSOR = BIT(11)
+#define OLED_PWR_OFF					PTB->PCOR = BIT(11)
+#define OLED_PWR(state)					{ if(state) { OLED_PWR_ON; } else { OLED_PWR_OFF; } }
+
+#define	BATT1_OK						IS_BIT_SET(PTB->PDIR, 18)
+#define	BATT2_OK						IS_BIT_SET(PTB->PDIR, 19)
+
+#define	PWR_SW0_OK						IS_BIT_SET(PTC->PDIR, 8)
+#define	PWR_SW1_OK						IS_BIT_SET(PTC->PDIR, 9)
+#define	PWR_SW2_OK						IS_BIT_SET(PTC->PDIR, 16)
+#define	PWR_SW3_OK						IS_BIT_SET(PTC->PDIR, 17)
+#define	PWR_SW4_OK						IS_BIT_SET(PTE->PDIR, 2)
+#define	PWR_SW5_OK						IS_BIT_SET(PTE->PDIR, 3)
+#define	PWR_SW6_OK						IS_BIT_SET(PTE->PDIR, 4)
+#define	PWR_SW7_OK						IS_BIT_SET(PTE->PDIR, 5)
+
+#define PWR_SW_OK(id)					( \
+	(id == 0) ? PWR_SW0_OK : \
+	(id == 1) ? PWR_SW1_OK : \
+	(id == 2) ? PWR_SW2_OK : \
+	(id == 3) ? PWR_SW3_OK : \
+	(id == 4) ? PWR_SW4_OK : \
+	(id == 5) ? PWR_SW5_OK : \
+	(id == 6) ? PWR_SW6_OK : \
+	(id == 7) ? PWR_SW7_OK : \
+	false \
+)
+
+#define PWR_SW0_P_ON					PTC->PSOR = BIT(0)
+#define PWR_SW0_P_OFF					PTC->PCOR = BIT(0)
+#define PWR_SW1_P_ON					PTC->PSOR = BIT(1)
+#define PWR_SW1_P_OFF					PTC->PCOR = BIT(1)
+#define PWR_SW2_P_ON					PTC->PSOR = BIT(2)
+#define PWR_SW2_P_OFF					PTC->PCOR = BIT(2)
+#define PWR_SW3_P_ON					PTC->PSOR = BIT(3)
+#define PWR_SW3_P_OFF					PTC->PCOR = BIT(3)
+#define PWR_SW4_P_ON					PTC->PSOR = BIT(4)
+#define PWR_SW4_P_OFF					PTC->PCOR = BIT(4)
+#define PWR_SW5_P_ON					PTC->PSOR = BIT(5)
+#define PWR_SW5_P_OFF					PTC->PCOR = BIT(5)
+#define PWR_SW6_P_ON					PTC->PSOR = BIT(6)
+#define PWR_SW6_P_OFF					PTC->PCOR = BIT(6)
+#define PWR_SW7_P_ON					PTC->PSOR = BIT(7)
+#define PWR_SW7_P_OFF					PTC->PCOR = BIT(7)
+
+#define PWR_SW0_N_ON					PTD->PSOR = BIT(0)
+#define PWR_SW0_N_OFF					PTD->PCOR = BIT(0)
+#define PWR_SW1_N_ON					PTD->PSOR = BIT(1)
+#define PWR_SW1_N_OFF					PTD->PCOR = BIT(1)
+#define PWR_SW2_N_ON					PTD->PSOR = BIT(2)
+#define PWR_SW2_N_OFF					PTD->PCOR = BIT(2)
+#define PWR_SW3_N_ON					PTD->PSOR = BIT(3)
+#define PWR_SW3_N_OFF					PTD->PCOR = BIT(3)
+#define PWR_SW4_N_ON					PTD->PSOR = BIT(4)
+#define PWR_SW4_N_OFF					PTD->PCOR = BIT(4)
+#define PWR_SW5_N_ON					PTD->PSOR = BIT(5)
+#define PWR_SW5_N_OFF					PTD->PCOR = BIT(5)
+#define PWR_SW6_N_ON					PTD->PSOR = BIT(6)
+#define PWR_SW6_N_OFF					PTD->PCOR = BIT(6)
+#define PWR_SW7_N_ON					PTD->PSOR = BIT(7)
+#define PWR_SW7_N_OFF					PTD->PCOR = BIT(7)
+
+#define PWR_SW0_P(state)				{ if(state) { PWR_SW0_P_ON; } else { PWR_SW0_P_OFF; } }
+#define PWR_SW1_P(state)				{ if(state) { PWR_SW1_P_ON; } else { PWR_SW1_P_OFF; } }
+#define PWR_SW2_P(state)				{ if(state) { PWR_SW2_P_ON; } else { PWR_SW2_P_OFF; } }
+#define PWR_SW3_P(state)				{ if(state) { PWR_SW3_P_ON; } else { PWR_SW3_P_OFF; } }
+#define PWR_SW4_P(state)				{ if(state) { PWR_SW4_P_ON; } else { PWR_SW4_P_OFF; } }
+#define PWR_SW5_P(state)				{ if(state) { PWR_SW5_P_ON; } else { PWR_SW5_P_OFF; } }
+#define PWR_SW6_P(state)				{ if(state) { PWR_SW6_P_ON; } else { PWR_SW6_P_OFF; } }
+#define PWR_SW7_P(state)				{ if(state) { PWR_SW7_P_ON; } else { PWR_SW7_P_OFF; } }
+
+#define PWR_SW0_N(state)				{ if(state) { PWR_SW0_N_ON; } else { PWR_SW0_N_OFF; } }
+#define PWR_SW1_N(state)				{ if(state) { PWR_SW1_N_ON; } else { PWR_SW1_N_OFF; } }
+#define PWR_SW2_N(state)				{ if(state) { PWR_SW2_N_ON; } else { PWR_SW2_N_OFF; } }
+#define PWR_SW3_N(state)				{ if(state) { PWR_SW3_N_ON; } else { PWR_SW3_N_OFF; } }
+#define PWR_SW4_N(state)				{ if(state) { PWR_SW4_N_ON; } else { PWR_SW4_N_OFF; } }
+#define PWR_SW5_N(state)				{ if(state) { PWR_SW5_N_ON; } else { PWR_SW5_N_OFF; } }
+#define PWR_SW6_N(state)				{ if(state) { PWR_SW6_N_ON; } else { PWR_SW6_N_OFF; } }
+#define PWR_SW7_N(state)				{ if(state) { PWR_SW7_N_ON; } else { PWR_SW7_N_OFF; } }
+
+#define PWR_SW_P(id, state) 			{ \
+	if     (id == 0) { PWR_SW0_P(state); } \
+	else if(id == 1) { PWR_SW1_P(state); } \
+	else if(id == 2) { PWR_SW2_P(state); } \
+	else if(id == 3) { PWR_SW3_P(state); } \
+	else if(id == 4) { PWR_SW4_P(state); } \
+	else if(id == 5) { PWR_SW5_P(state); } \
+	else if(id == 6) { PWR_SW6_P(state); } \
+	else if(id == 7) { PWR_SW7_P(state); } \
+}
+
+#define PWR_SW_N(id, state) 			{ \
+	if     (id == 0) { PWR_SW0_N(state); } \
+	else if(id == 1) { PWR_SW1_N(state); } \
+	else if(id == 2) { PWR_SW2_N(state); } \
+	else if(id == 3) { PWR_SW3_N(state); } \
+	else if(id == 4) { PWR_SW4_N(state); } \
+	else if(id == 5) { PWR_SW5_N(state); } \
+	else if(id == 6) { PWR_SW6_N(state); } \
+	else if(id == 7) { PWR_SW7_N(state); } \
+}
+
+#define PWR_SW(id, state) 				{ PWR_SW_P(id, state) ; PWR_SW_N(id, state); }
+
+/*
+#define PWR_SW0_ON						{ PWR_SW0_P_ON; PWR_SW0_N_ON; }
+#define PWR_SW1_ON						{ PWR_SW1_P_ON; PWR_SW1_N_ON; }
+#define PWR_SW2_ON						{ PWR_SW2_P_ON; PWR_SW2_N_ON; }
+#define PWR_SW3_ON						{ PWR_SW3_P_ON; PWR_SW3_N_ON; }
+#define PWR_SW4_ON						{ PWR_SW4_P_ON; PWR_SW4_N_ON; }
+#define PWR_SW5_ON						{ PWR_SW5_P_ON; PWR_SW5_N_ON; }
+#define PWR_SW6_ON						{ PWR_SW6_P_ON; PWR_SW6_N_ON; }
+#define PWR_SW7_ON						{ PWR_SW7_P_ON; PWR_SW7_N_ON; }
+
+#define PWR_SW0_OFF						{ PWR_SW0_P_OFF; PWR_SW0_N_OFF; }
+#define PWR_SW1_OFF						{ PWR_SW1_P_OFF; PWR_SW1_N_OFF; }
+#define PWR_SW2_OFF						{ PWR_SW2_P_OFF; PWR_SW2_N_OFF; }
+#define PWR_SW3_OFF						{ PWR_SW3_P_OFF; PWR_SW3_N_OFF; }
+#define PWR_SW4_OFF						{ PWR_SW4_P_OFF; PWR_SW4_N_OFF; }
+#define PWR_SW5_OFF						{ PWR_SW5_P_OFF; PWR_SW5_N_OFF; }
+#define PWR_SW6_OFF						{ PWR_SW6_P_OFF; PWR_SW6_N_OFF; }
+#define PWR_SW7_OFF						{ PWR_SW7_P_OFF; PWR_SW7_N_OFF; }
+*/
+
+//==============================================================================
+#endif

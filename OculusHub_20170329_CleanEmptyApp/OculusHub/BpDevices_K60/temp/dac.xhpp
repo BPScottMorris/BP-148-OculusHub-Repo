@@ -1,0 +1,83 @@
+/*==============================================================================
+C++ Module that provides the definitions and implementation for a class that
+provides basic functionality for using the Kinetis DAC modules.
+
+03/08/2016 - Created V1.0 of file
+==============================================================================*/
+//Prevent multiple inclusions of this file
+#ifndef DAC_HPP
+#define DAC_HPP
+
+//Include system libraries
+//#include <cmath>
+
+//Include common type definitions and macros
+#include "common.h"
+
+//Include the processor platform
+#include "processor.h"
+
+//==============================================================================
+//Class Definition...
+//==============================================================================
+#ifndef DAC_PERIPHERALS
+	PRAGMA_ERROR("Number of DAC peripherals not defined")
+#endif
+
+#ifndef DAC_BITS
+	#define DAC_BITS	12
+#endif
+
+/*! Define the number of DAC steps availalbe */
+#define DAC_STEPS		(1 << (uint8)DAC_BITS)
+
+/*! Define the maximum value the DAC can take */
+#define DAC_MAX_VAL		(DAC_STEPS - 1)
+
+//------------------------------------------------------------------------------
+enum EDacRefSource {
+	DAC_REF1 = 0,
+	DAC_REF2 = 1,
+	//Kinetis K22 specific
+	DAC_REF_VREFOUT = 0,
+	DAC_REF_VDDA = 1,
+};
+
+
+/*!
+Define a class to provide DAC control
+*/
+class CDac {
+	private:
+
+	protected:
+		//Protected variables
+		DAC_Type*			_dac;							/*!< Pointer to the DAC module to use */
+		bool				_enabled;						/*!< True if the DAC hardware is enabled */
+		uint8				_id;							/*!< The id of the DAC module */
+		EDacRefSource		_ref;
+		float				_refVoltage;
+		uint16				_value;							/*!< The 12-bit output value of the DAC */
+
+		//Protected methods
+
+	public:
+		//Construction & Disposal
+		CDac(uint8 dacId);
+		virtual ~CDac();
+
+		//Methods
+		DAC_Type*			GetRegisters();
+		bool				IsEnabled();
+		bool				SetEnabled(bool value);
+		void				SetRefSource(EDacRefSource refSrc, float voltage);
+		void				SetOutputPct(float value);
+		void				SetOutputVal(uint16 value);
+		void				SetOutputVoltage(float voltage);
+};
+
+/*! Define a pointer to a DAC Module */
+typedef CDac* PDac;
+
+//==============================================================================
+#endif

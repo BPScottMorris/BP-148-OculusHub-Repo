@@ -1,0 +1,572 @@
+#include "oculushub.hpp"
+
+//==============================================================================
+//Class Implementation...
+//==============================================================================
+//COculusHub
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor that initialises the hardware and operating systems
+*/
+COculusHub::COculusHub()
+{
+	//Disable interrupts, and initialise the interrupt system
+	IRQ_INIT;
+	IRQ_DISABLE;
+
+	//Initialise the hardware platform (do this first for power latching)...
+	this->DoInitialiseGpio();
+
+	//Initialise the clock sources
+	TMcgConfig mcgCfg;
+	mcgCfg.OSCCR = (OSC_CR_ERCLKEN_MASK | OSC_CR_EREFSTEN_MASK); 	//Setup for external clock, not oscillator
+	mcgCfg.OscSrc = OSCSRC_EXTREF;	/*!< Choose TTL oscillator */
+	mcgCfg.RANGE = 2;				/*!< Not really applicable for Ext TTL source - Very High Frequency source, 8-32MHz */
+	mcgCfg.FRDIV = 5;				/*!< Not really applicable for Ext TTL source - FLL External Reference Divider - Divide by 1024 to get 48.82kHz */
+	mcgCfg.PRDIV = 4;				/*!< PLL0 - Divide by factor of 5 for a PLL0 frequency of 5MHz (we think theres an extra div2 in here) */
+	mcgCfg.VDIV = 8;				/*!< PLL0 - Multiply 5MHz by 24 to give 120MHz */
+	mcgCfg.ClkSrcFreq = 50000000;
+	mcgCfg.ClkMcgFreq = 120000000;
+	mcgCfg.ClkDivSys = 1;			/*!< 120MHz system */
+	mcgCfg.ClkDivPeripheral = 2;	/*!< 60MHz bus/peripherals */
+	mcgCfg.ClkDivBus = 3;			/*!< 40MHz for external bus */
+	mcgCfg.ClkDivFlash = 6;			/*!< 20MHz for flash */
+	CMcg::Initialise(&mcgCfg);
+
+	//Set the SysTick master time-base
+	CSysTick::Initialise(SYSTICK_TIMER_FREQ);
+
+	//Initialise the CRC16 generator LUT
+	//CCrc16::Init();
+
+	//Setup the DEBUG Com Port
+	_comDebug = new CComUart(UART_DEBUG, UART_DEBUG_RX_BUFFER, UART_DEBUG_TX_BUFFER);
+	_comDebug->Close();
+	_comDebug->SetBaudRate(UART_DEBUG_BAUD);
+	_comDebug->SetParity(PARITY_NONE);
+
+	//Setup the PrintF redirection to the AUX Com Port
+	CCom::Terminal = _comDebug;
+
+	/*
+	//Initialise the command processor
+	_cmd = new CCmdProc();
+	#ifdef DEBUG
+		_cmd->SetRxUseCsum(false);
+	#else
+		_cmd->SetRxUseCsum(true);
+	#endif
+	_cmd->SetRxIgnoreBadChars(true);
+	_cmd->SetRxUseDeviceAddr(true, DEVICE_ADDR);
+	_cmd->SetUart(_comDebug);
+	_cmd->OnExecute.Set(this, &COculusHub::CmdExecuteEvent);
+	*/
+
+	//Populate hardware information
+	_hardware.PartNumber = HARDWARE_PARTNUMBER;
+	_hardware.PartRevision = HARDWARE_PARTREV;
+	_hardware.SerialNumber = 0;
+	_hardware.FlagsSys = 0x0000;
+	_hardware.FlagsUser = 0x0000;
+
+	//Initialise the flash controller
+	_flash = new CFlash();
+
+	//Initialise the Flash Programmer
+	_flashProg = new CFlashProg(_flash, FLASH_PROGINFO_START, FLASH_PROGINFO_SIZE);
+	_flashProg->SetHardwareInfo(&_hardware);
+	_flashProg->OnAction.Set(this, &COculusHub::FlashProgActionEvent);
+
+	//Indicate the application is allowed to run
+	_run = true;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+COculusHub::~COculusHub()
+{
+}
+
+/*!-----------------------------------------------------------------------------
+Handler that executes decoded commands from the serial port
+
+void COculusHub::CmdExecuteEvent(PCmdProcExecute params)
+{
+	//Process common application commands
+	switch(params->Id) {
+		case CID_SYS_ALIVE : { this->CmdExecute_SysAlive(params); params->Handled = true; break; }
+		case CID_SYS_INFO : { this->CmdExecute_SysInfo(params); params->Handled = true; break; }
+		case CID_SYS_REBOOT : { this->CmdExecute_SysReboot(params); params->Handled = true; break; }
+		case CID_PROG_INIT : { this->CmdExecute_ProgInit(params); params->Handled = true; break; }
+		case CID_PROG_BLOCK : { this->CmdExecute_ProgBlock(params); params->Handled = true; break; }
+		case CID_PROG_UPDATE : { this->CmdExecute_ProgUpdate(params); params->Handled = true; break; }
+	}
+}
+*/
+
+/*!-----------------------------------------------------------------------------
+CmdProc function used to initialise a Flash Programming sequence.
+When executed, the flash programming system is initialised to receive new blocks,
+the Scratch memory area is erased ready to receive new data, and the running checksum
+is cleared.
+
+void COculusHub::CmdExecute_ProgInit(PCmdProcExecute params)
+{
+	bool success = true;
+	EFlashProgReturn progResult;
+	uint8 status = CST_FAIL;
+	uint8 format;
+	TFlashProgInit init;
+
+	//Read in the command parameters...
+	success &= params->Msg->ReadUint8(&init.Section, 0xFF);
+	success &= params->Msg->ReadUint16(&init.PartNumber, 0);
+	success &= params->Msg->ReadUint8(&init.PartRevMin, 0);
+	success &= params->Msg->ReadUint8(&init.PartRevMax, 0);
+	success &= params->Msg->ReadUint32(&init.SerialNumber, 0);
+	success &= params->Msg->ReadUint8(&format, 0);
+	success &= params->Msg->ReadUint32(&init.Length, 0);
+	success &= params->Msg->ReadUint32(&init.Checksum, 0);
+	success &= params->Msg->ReadData(init.Hash, 20);
+	if(!success) {
+		status = CST_CMD_LENGTH_ERROR;
+	}
+
+	init.DataFormat = EFlashProgDataFormat(format);
+
+	//Initialise programming
+	if(success) {
+		progResult = _flashProg->ProgInit(&init);
+		success = (progResult == FPROG_OK);
+
+		//Select the appropriate error code to return
+		switch(progResult) {
+			case FPROG_OK : { status = CST_OK; break; }
+			case FPROG_FLASH_ERROR : {status = CST_PROG_FLASH_ERROR; break; }
+			case FPROG_INIT_ERROR : { status = CST_PROG_FIRMWARE_ERROR; break; }
+			case FPROG_SECTION_ERROR : { status = CST_PROG_SECTION_ERROR; break; }
+			case FPROG_LENGTH_ERROR : { status = CST_PROG_LENGTH_ERROR; break; }
+			case FPROG_HASH_ERROR : { status = CST_PROG_FIRMWARE_ERROR; break; }
+			default : { status = CST_FAIL; break; }
+		}
+	}
+
+	//Send the CmdProc message back
+	CCmdMsg cmdMsg;
+	cmdMsg.AddUint8(CID_PROG_INIT);
+	cmdMsg.AddUint8(status);
+	params->CmdProc->SendMsg(&cmdMsg);
+}
+*/
+
+/*!-----------------------------------------------------------------------------
+CmdProc function used to transfer a block of flash data into the Scratch memory
+ready for programming.
+
+void COculusHub::CmdExecute_ProgBlock(PCmdProcExecute params)
+{
+	bool success = true;
+	uint8 status = CST_FAIL;
+	uint16 length;
+	uint8 data[FLASH_PROG_BLOCK_MAX];
+	EFlashProgReturn progResult;
+
+	//Read in the number of bytes following in the block command, and abort if too many
+	success &= params->Msg->ReadUint16(&length, 0);
+	//If valid, read in the data bytes
+	if(success && (length <= FLASH_PROG_BLOCK_MAX))
+		success &= params->Msg->ReadData(data, length);
+
+	//Report any errors in reading the data
+	if((length < 8) || (length > FLASH_PROG_BLOCK_MAX) || IS_BITS_SET(length, 0x03)) {
+		//Length must be >= 8, a multiple of 4 bytes and less than the maximum allowed length
+		//status = CST_CMD_PARAM_INVALID;
+		status = CST_PROG_LENGTH_ERROR;
+		success = false;
+	}
+	else if(!success) {
+		status = CST_CMD_LENGTH_ERROR;
+	}
+
+	////Round up length to the nearest 4 bytes, and pad with 1's unused memory
+	////This is done for decryption purposes (as entity size is a Uint32).
+	//uint16 rawLen = length;
+	//length = CMaths::RoundMultipleUp(length, 8);
+	//for(uint16 idx = rawLen; idx < length; idx++) {
+	//	data[idx] = 0xFF;
+	//}
+
+	//Program the block into scratch memory
+	if(success) {
+		progResult = _flashProg->ProgScratch(data, length);
+		success = (progResult == FPROG_OK);
+
+		//Select the appropriate error code to return
+		switch(progResult) {
+			case FPROG_OK : { status = CST_OK; break; }
+			case FPROG_FLASH_ERROR : {status = CST_PROG_FLASH_ERROR; break; }
+			case FPROG_INIT_ERROR : {status = CST_PROG_FIRMWARE_ERROR; break; }
+			case FPROG_LENGTH_ERROR : { status = CST_PROG_LENGTH_ERROR; break; }
+			default : { status = CST_FAIL; break; }
+		}
+	}
+
+	//Send the CmdProc ack message back
+	CCmdMsg cmdMsg;
+	cmdMsg.AddUint8(CID_PROG_BLOCK);
+	cmdMsg.AddUint8(status);
+	params->CmdProc->SendMsg(&cmdMsg);
+}
+*/
+
+/*!-----------------------------------------------------------------------------
+CmdProc function used to perform the actual flash programming once all the new
+data blocks have been sent and programmed into the Scratch area of memory.
+When executed, the checksums are compared between the param sent in the command
+and that in Scratch memory, and if correct the Flash memory is copied from
+Scratch to the required area, then the processor is rebooted.
+
+void COculusHub::CmdExecute_ProgUpdate(PCmdProcExecute params)
+{
+	bool success = true;
+	uint8 status = CST_FAIL;
+	EFlashProgReturn progResult;
+
+	//Start the firmware update process
+	progResult = _flashProg->ProgUpdate();
+
+	//Select the appropriate error code to return
+	success = false;
+	switch(progResult) {
+		//case FPROG_OK :
+		case FPROG_COPY_NOW :
+		case FPROG_REBOOT_NOW : {
+			status = CST_OK;
+			success = true;
+			break;
+		}
+		case FPROG_FLASH_ERROR : { status = CST_PROG_FLASH_ERROR; break; }
+		case FPROG_INIT_ERROR : { status = CST_PROG_FIRMWARE_ERROR; break; }
+		case FPROG_LENGTH_ERROR : { status = CST_PROG_LENGTH_ERROR; break; }
+		case FPROG_CHECKSUM_ERROR : { status = CST_PROG_CHECKSUM_ERROR; break; }
+		case FPROG_SECTION_ERROR : { status = CST_PROG_SECTION_ERROR; break; }
+		default : { status = CST_FAIL; break; }
+	}
+
+	//Send the CmdProc ack message back
+	CCmdMsg cmdMsg;
+	cmdMsg.AddUint8(CID_PROG_UPDATE);
+	cmdMsg.AddUint8(status);
+	params->CmdProc->SendMsg(&cmdMsg);
+
+	//If the Update command succeeded, then take the next programming action...
+	if(success) {
+		//Wait for a set time for the UART to send out any characters
+		CSysTick::WaitMilliseconds(200);
+
+		//If required, perform the flash copy now
+		if(progResult == FPROG_COPY_NOW) {
+			//Copy the scratch memory to its final location
+			success = _flashProg->UpdateCopy();
+
+			//If copying successful, then reboot.
+			//If copying error, then don't reboot as this may 'brick' the device, at least
+			//another chance of programming is available.
+			if(success) {
+				progResult = FPROG_REBOOT_NOW;
+			}
+		}
+
+		//If required, reboot now to complete the programming...
+		if(progResult == FPROG_REBOOT_NOW) {
+			REBOOT;
+		}
+	}
+}
+*/
+
+/*!-----------------------------------------------------------------------------
+CmdProc function called when an ALIVE request is issued
+
+void COculusHub::CmdExecute_SysAlive(PCmdProcExecute params)
+{
+	//Read the current time
+	uint32 seconds = CSysTick::GetSeconds();
+
+	//Send the CmdProc ack message back
+	CCmdMsg cmdMsg;
+	cmdMsg.AddUint8(CID_SYS_ALIVE);
+	cmdMsg.AddUint32(seconds);
+	cmdMsg.AddUint8(FIRMWARE_SECTION);
+	params->CmdProc->SendMsg(&cmdMsg);
+}
+*/
+
+/*!-----------------------------------------------------------------------------
+CmdProc function called when an CID_SYS_PROG_INFO request is issued,
+the command will return hardware/firmware details.
+
+void COculusHub::CmdExecute_SysInfo(PCmdProcExecute params)
+{
+	//Read the current RTC time
+	uint32 seconds = (uint32)CSysTick::GetSeconds();
+
+	//Read the identification non-volatile data
+	TFlashProgInfo info;
+	_flashProg->ReadInfo(&info);
+
+	//Send the CmdProc ack message back
+	CCmdMsg cmdMsg;
+	cmdMsg.AddUint8(CID_SYS_INFO);
+	cmdMsg.AddUint32(seconds);
+	cmdMsg.AddUint8(FIRMWARE_SECTION);
+
+	//Hardware
+	_hardware.Serialize(&cmdMsg);
+
+	//Boot Firmware
+	info.Firmware[FLASH_SECTION_BOOT].Serialize(&cmdMsg);
+
+	//Main Firmware
+	info.Firmware[FLASH_SECTION_MAIN].Serialize(&cmdMsg);
+
+	//Send the message
+	params->CmdProc->SendMsg(&cmdMsg);
+}
+*/
+
+/*!-----------------------------------------------------------------------------
+CmdProc function called when an CID_SYS_PROG_REBOOT request is issued,
+the command will return hardware/firmware details.
+
+void COculusHub::CmdExecute_SysReboot(PCmdProcExecute params)
+{
+	bool success = true;
+	uint8 status = CST_OK;
+	uint16 check;
+
+	//Send the CmdProc ack message back
+	CCmdMsg cmdMsg;
+	cmdMsg.AddUint8(CID_SYS_REBOOT);
+	cmdMsg.AddUint8(status);
+	params->CmdProc->SendMsg(&cmdMsg);
+	COM_PRINT("\r\n");
+
+	//Call the inheritable DoReboot method, to allow inheriting classes to shut down services
+	this->DoReboot();
+
+	//Wait for UART buffers to empty
+	//CSysTick::WaitMilliseconds(200);
+
+	//Shut down comms - wait for buffers to empty
+	_comDebug->Flush();
+	_comDebug->Close();
+
+	//Turn off interrupts
+	IRQ_DISABLE;
+
+	//Perform the reboot
+	REBOOT;
+
+	//This should never be executed
+}
+*/
+
+/*!-----------------------------------------------------------------------------
+Function called to send a READY message (on startup) - this is the only
+unsolicited message the thruster will send over the half-duplex link
+
+void COculusHub::CmdSend_Ready()
+{
+	CCmdMsg cmdMsg;
+	cmdMsg.AddUint8(CID_READY);
+	cmdMsg.AddUint8(FIRMWARE_SECTION);
+	_cmd->SendMsg(&cmdMsg);
+}
+*/
+
+/*!-----------------------------------------------------------------------------
+Function that initialises the GPIO pins and clocks
+*/
+void COculusHub::DoInitialiseGpio()
+{
+
+//### TODO - /*MUST remap the output ofSW.RST and  WIFI.GPIO_0 to digital pins*/
+
+	// Turn on all the port clocks before we attempt to set up the registers
+	SET_BITS(SIM->SCGC5, SIM_SCGC5_PORTE_MASK | SIM_SCGC5_PORTD_MASK | SIM_SCGC5_PORTC_MASK | SIM_SCGC5_PORTB_MASK | SIM_SCGC5_PORTA_MASK);
+
+	//--------------------------------------------------------------------------
+	//Configure Port A GPIO...
+	PORTA->PCR[0] = PORT_PCR_MUX(7); 											//JTAG_TCLK(I)
+	PORTA->PCR[1] = PORT_PCR_MUX(7);											//JTAG_TDI(I)
+	PORTA->PCR[2] = PORT_PCR_MUX(7);											//JTAG_TDO(O)
+	PORTA->PCR[3] = PORT_PCR_MUX(7);											//JTAG_TMD(I)
+	PORTA->PCR[5] = PORT_PCR_MUX(4);											//RMII0_RXER
+	PORTA->PCR[12] = PORT_PCR_MUX(4);											//RMII0_RXD1
+	PORTA->PCR[13] = PORT_PCR_MUX(4);											//RMII0_RXD0
+	PORTA->PCR[14] = PORT_PCR_MUX(4);											//RMII0_CRS_DV
+	PORTA->PCR[15] = PORT_PCR_MUX(4);											//RMII0_TXEN
+	PORTA->PCR[16] = PORT_PCR_MUX(4);											//RMII0_TXD0
+	PORTA->PCR[17] = PORT_PCR_MUX(4);											//RMII0_TXD1
+	PORTA->PCR[18] = PORT_PCR_MUX(0);											//EXTAL0(I) : 50MHz
+	PORTA->PCR[19] = PORT_PCR_MUX(1);											//IO(O) : "DSL.LED_R#"
+	PORTA->PCR[24] = PORT_PCR_MUX(1);											//IO(O) : "SON.LED_R#"
+	PORTA->PCR[25] = PORT_PCR_MUX(1);											//IO(O) : "SON.LED_G#"
+	PORTA->PCR[26] = PORT_PCR_MUX(1);											//IO(O) : "SON.LED_B#"
+	PORTA->PCR[27] = PORT_PCR_MUX(1);											//IO(I) : "DSL.PWR" (ext pullup)
+	PORTA->PCR[28] = PORT_PCR_MUX(1);											//IO(I) : "DSL.ETH" (ext pullup)
+	PORTA->PCR[29] = PORT_PCR_MUX(1);											//IO(I) : "DSL.LINK" (ext pullup)
+
+	//Configure Port A Default output levels...
+	PTA->PDOR = 0;
+	DSL_LED_RED(false);
+	SON_LED_RED(false);
+	SON_LED_GREEN(false);
+	SON_LED_BLUE(false);
+
+	//Configure Port A Data Direction Register (true = output, false = input)
+	PTA->PDDR = BIT(19) | BIT(24) | BIT(25) | BIT(26);
+
+	//--------------------------------------------------------------------------
+	//Configure Port B GPIO...
+	PORTB->PCR[0] = PORT_PCR_MUX(1);											//IO(O) : "DSL.LED_G#"
+	PORTB->PCR[1] = PORT_PCR_MUX(1);											//IO(O) : "DSL.LED_B#"
+	PORTB->PCR[2] = PORT_PCR_MUX(2);											//I2C0_SCL : "AUX.I2C.SCL"
+	PORTB->PCR[3] = PORT_PCR_MUX(2);											//I2C0_SDA : "AUX.I2C.SDA"
+	PORTB->PCR[4] = PORT_PCR_MUX(1);											//IO(O) : "AUX.IO_0"
+	PORTB->PCR[5] = PORT_PCR_MUX(1);											//IO(O) : "AUX.IO_1"
+	PORTB->PCR[10] = PORT_PCR_MUX(3);											//UART3_RX(I) : "AUX.RXD"
+	PORTB->PCR[11] = PORT_PCR_MUX(3);											//UART3_TX(O) : "AUX.TXD"
+
+	//Configure Port B Default output levels...
+	PTB->PDOR = 0;
+	DSL_LED_GREEN(false);
+	DSL_LED_BLUE(false);
+	AUX_IO0(false);
+	AUX_IO1(false);
+
+	//Configure Port B Data Direction Register (true = output, false = input)
+	PTB->PDDR = BIT(0) | BIT(1) | BIT(4) | BIT(5);
+
+	//--------------------------------------------------------------------------
+	//Configure Port C GPIO...
+	PORTC->PCR[2] = PORT_PCR_MUX(2);											//SPI0_PCS2 : "SPI.CS.HDR#"
+	PORTC->PCR[3] = PORT_PCR_MUX(2);											//SPI0_PCS1 : "SPI.CS.SW#" (external pullup)
+	PORTC->PCR[4] = PORT_PCR_MUX(2);											//SPI0_PCS0 : "SPI.CS.CFG#"
+	PORTC->PCR[5] = PORT_PCR_MUX(2);											//SPI0_SCK	: "SPI.SCK" (external pullup)
+	PORTC->PCR[6] = PORT_PCR_MUX(2);											//SPI0_SOUT	: "SPI.SDO" (external pullup)
+	PORTC->PCR[7] = PORT_PCR_MUX(2);											//SPI0_SIN	: "SPI.SDI" (external pullup)
+	PORTC->PCR[8] = PORT_PCR_MUX(1);											//IO(O)	: "MCU_LED_HB"
+	PORTC->PCR[17] = PORT_PCR_MUX(1);											//IO(I)	: "SW.INTR#"
+	PORTC->PCR[19] = PORT_PCR_MUX(1);											//IO(O)	: "SW.PWRDN#"
+
+	//Configure Port A Default output levels...
+	PTC->PDOR = 0;
+	MCU_LED(false);
+	LANSW_POWERDOWN(false);
+
+	//Configure Port C Data Direction Register (true = output, false = input)
+	PTC->PDDR = BIT(8) | BIT(19);
+
+	//--------------------------------------------------------------------------
+	//Configure Port D GPIO...
+	PORTD->PCR[6] = PORT_PCR_MUX(3); 											//UART0_RX(I) : "WIFI.COM1.RXD"
+	PORTD->PCR[7] = PORT_PCR_MUX(3); 											//UART0_TX(O) : "WIFI.COM1.TXD"
+	PORTD->PCR[8] = PORT_PCR_MUX(1) | PORT_PCR_PE_MASK | PORT_PCR_PS_MASK;		//IO(I) : "MCU.CFG1" (int pullup enabled)
+	PORTD->PCR[9] = PORT_PCR_MUX(1) | PORT_PCR_PE_MASK | PORT_PCR_PS_MASK;		//IO(I) : "MCU.CFG2" (int pullup enabled)
+	PORTD->PCR[10] = PORT_PCR_MUX(1) | PORT_PCR_PE_MASK | PORT_PCR_PS_MASK;		//IO(I) : "MCU.CFG3" (int pullup enabled)
+	PORTD->PCR[11] = PORT_PCR_MUX(1) | PORT_PCR_PE_MASK | PORT_PCR_PS_MASK;		//IO(I) : "MCU.CFG4" (int pullup enabled)
+	PORTD->PCR[12] = PORT_PCR_MUX(1) | PORT_PCR_PE_MASK	| PORT_PCR_PS_MASK;		//IO(I) : "WIFI.LINK#" (int pullup enabled)
+	PORTD->PCR[13] = PORT_PCR_MUX(1);											//IO(O) : "WIFI.RST#"
+	PORTD->PCR[14] = PORT_PCR_MUX(1) | PORT_PCR_PE_MASK | PORT_PCR_PS_MASK;		//IO(I) : "WIFI.READY#" (int pullup enabled)
+	PORTD->PCR[15] = PORT_PCR_MUX(1);											//IO(O) : "WIFI.RELOAD#"
+
+	//Configure Port D Default output levels...
+	PTD->PDOR = 0;
+	WIFI_RELOAD(false);
+	WIFI_RESET(false);
+
+	//Configure Port D Data Direction Register (true = output, false = input)
+	PTD->PDDR = BIT(13) | BIT(15);
+
+	//--------------------------------------------------------------------------
+	//Configure Port E GPIO...
+	PORTE->PCR[0] = PORT_PCR_MUX(3);											//UART1_TX(O) : "WIFI.COM2.TXD"
+	PORTE->PCR[1] = PORT_PCR_MUX(3);											//UART1_RX(I) : "WIFI.COM2.RXD"
+	PORTE->PCR[2] = PORT_PCR_MUX(1);											//IO(O)	: "WIFI.GPIO_1"
+	PORTE->PCR[4] = PORT_PCR_MUX(1);											//IO(O) : "WIFI.LED_R#"
+	PORTE->PCR[5] = PORT_PCR_MUX(1);											//IO(O) : "WIFI.LED_G#"
+	PORTE->PCR[6] = PORT_PCR_MUX(1);											//IO(O) : "WIFI.LED_B#"
+	PORTE->PCR[7] = PORT_PCR_MUX(1);											//IO(O) : "PC.LED_R#"
+	PORTE->PCR[8] = PORT_PCR_MUX(1);											//IO(O) : "PC.LED_R#"
+	PORTE->PCR[9] = PORT_PCR_MUX(1);											//IO(O) : "PC.LED_R#"
+	PORTE->PCR[10] = PORT_PCR_MUX(1);											//IO(O) : "PWR.LED_R#"
+	PORTE->PCR[11] = PORT_PCR_MUX(1);											//IO(O) : "PWR.LED_R#"
+	PORTE->PCR[12] = PORT_PCR_MUX(1);											//IO(O) : "PWR.LED_R#"
+
+	//Configure Port E Default output levels...
+	PTE->PDOR = 0;
+	WIFI_LED_RED(false);
+	WIFI_LED_GREEN(false);
+	WIFI_LED_BLUE(false);
+	NET_LED_RED(false);
+	NET_LED_GREEN(false);
+	NET_LED_BLUE(false);
+	PWR_LED_RED(false);
+	PWR_LED_GREEN(false);
+	PWR_LED_BLUE(false);
+
+	//Configure Port E Data Direction Register (true = output, false = input)
+	PTE->PDDR = BIT(2) | BIT(4) | BIT(5) | BIT(6) | BIT(7) | BIT(8) | BIT(9) | BIT(10) | BIT (11) | BIT(12);
+
+
+
+	//### On Rev1 hardware, LANSW.RESET cannot be driven - the line below implements a NOP
+	LANSW_RESET(false);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that handles the action event from the flash programmer
+*/
+void COculusHub::FlashProgActionEvent(PFlashProgActionParams params)
+{
+}
+
+
+/*!-----------------------------------------------------------------------------
+Function called to start the application running
+*/
+void COculusHub::Run()
+{
+	//Update firmware info details about the program if they don't match.
+	_flashProg->UpdateFirmwareInfo();
+
+	//Initialise the COM ports
+	_comDebug->Open();
+
+	//Start the command processor
+	//_cmd->ServiceStart();
+
+	//Start interrupt generation (releasing the DISABLE set in the constructor)
+	IRQ_ENABLE;
+
+	//Wait for power supply to settle before we start things
+	CSysTick::WaitMilliseconds(100);
+
+	//Implement the main loop
+	this->DoRun();
+
+	COM_PRINT("\r\n");
+	COM_PRINT("An unexpected error has occurred, rebooting...\r\n");
+	COM_PRINT("\r\n");
+
+	//Wait to flush UART then reboot
+	CSysTick::WaitMilliseconds(2000);
+
+	//Disable Interrupts
+	IRQ_DISABLE;
+}
+
+//==============================================================================
+

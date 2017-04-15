@@ -1,0 +1,142 @@
+/*==============================================================================
+The "Platform.h" file specifies all the common definitions and macros
+that are available across all objects within the class heirachy, this may
+include hardware definitions required by low-level modules to higher level
+objects.
+==============================================================================*/
+//Prevent multiple inclusions of this file
+#ifndef PLATFORM_H
+#define PLATFORM_H
+
+//Include common type definitions and macros
+#include "common.h"
+
+//CMSIS related definitions
+//#include "processor.h"
+
+//------------------------------------------------------------------------------
+#if defined(DEBUG)
+	PRAGMA_INFO("Compiling DEBUG firmware")
+#else
+	PRAGMA_INFO("Compiling RELEASE firmware")
+#endif
+
+//------------------------------------------------------------------------------
+//Firmware & Hardware Information (& PCB Revision)
+//------------------------------------------------------------------------------
+//Define available flash programmer sections
+#define FLASH_SECTION_BOOT				0
+#define FLASH_SECTION_MAIN				1
+
+//Define hardware part numbers for different products
+#define HARDWARE_PARTNUMBER				8888			/*!< Part number for the product */
+#define HARDWARE_PARTREV				1				/*!< Part revision for the product */
+
+#define FIRMWARE_DATE					__DATE__		/*!< String containing software build date */
+
+//Include the platform version definitions, separated to another file,
+//so a command line auto-inc tool can easily parse and modify without making
+//changes to this file.
+#include "version.h"
+
+//------------------------------------------------------------------------------
+//Flash Memory Configuration
+//------------------------------------------------------------------------------
+/*! Size of Flash area - 512kb size */
+#define FLASH_SIZE						0x00100000
+
+/*! Program Flash sector size - 4kB size */
+#define FLASH_SECTOR_SIZE				0x00001000
+
+/*! Program Flash block size, 256kB */
+#define FLASH_BLOCK_SIZE				0x00040000
+
+//#define FLASH_BOOT_START				0x00000410			/*!< Boot loader starting address */
+#define FLASH_BOOT_START				0x00000000			/*!< Boot loader starting address */
+#define FLASH_BOOT_SIZE					0x00010000			/*!< Boot loader size - 64kb */
+
+#define FLASH_MAIN_START				(FLASH_BOOT_SIZE)	/*!< Main application starting address, 64kb */
+#define FLASH_MAIN_SIZE					0x00070000			/*!< Main application size, 448kb */
+
+#define FLASH_SCRATCH_START				0x00080000			/*!< Temporary programming area starting address */
+#define FLASH_SCRATCH_SIZE				(FLASH_MAIN_SIZE)	/*!< Temporary programming area size - same as main application */
+
+#define FLASH_SETTINGS_START			0x000F0000			/*!< Settings data - 56kb, 14 x 4kb sectors of memory */
+#define FLASH_SETTINGS_SIZE				0x0000F000
+
+#define FLASH_PROGINFO_START			0x000FF000			/*!< Program Identification data - 1 x 4kb sector of memory */
+#define FLASH_PROGINFO_SIZE				0x00001000
+
+#define FLASH_HASH_KEY					"u86TzXFTDci1I0sW"	/*!< Defines a string used as part of the hashing process to sign firmware, for decryption and user access - must be 16 chars long min*/
+
+#define FLASH_PROG_BLOCK_MAX			128					/*! Maximum number of bytes in a flash programming block */
+
+//------------------------------------------------------------------------------
+//Define the bit values of the Hardware Flags field
+
+//------------------------------------------------------------------------------
+//Settings Default Values
+//------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
+//Clock & Oscillator Configuration
+//------------------------------------------------------------------------------
+#define SYSTICK_TIMER_FREQ				10000.0				/*!< Define the frequency of the SysTick Timer overflow timebase */
+
+//------------------------------------------------------------------------------
+//UART Configuration
+//------------------------------------------------------------------------------
+//Route GetChar/PutChar PrintF requests through the CUart handler
+#define COM_TERMINAL					true
+
+//Define the number of supported UART peripherals
+#define UART_PERIPHERALS	 			4
+
+//Enable UART IRQ's...
+#define UART0_CONNECT_IRQ				true			/*! For external communications */
+//#define UART1_CONNECT_IRQ				true			/*! For debug communications */
+//#define UART2_CONNECT_IRQ				true
+//#define UART3_CONNECT_IRQ				true
+
+//Define the setup each logical uart object uses...
+#define UART_COMMS						0				/*! Map to UART0 */
+#define UART_COMMS_TX_BUFFER			512
+#define UART_COMMS_RX_BUFFER			128
+
+#define UART_DEBUG						1				/*! Map to UART1 */
+//#define UART_DEBUG_TX_BUFFER			512
+//#define UART_DEBUG_RX_BUFFER			128
+
+//------------------------------------------------------------------------------
+//Macros for controlling IO signals
+//------------------------------------------------------------------------------
+#define PWR_MASTER_ON					PTA->PSOR = BIT(4)				/*!< Set the KILL# signal high - power on */
+#define PWR_MASTER_OFF					PTA->PCOR = BIT(4)				/*!< Set the KILL# signal low - power off */
+
+#define PWR_BUTTON						IS_BIT_CLR(PTB->PDIR, 2)
+
+#define UART0_MODE_RX					PTB->PCOR = BIT(3)
+#define UART0_MODE_TX					PTB->PSOR = BIT(3)
+
+#define OLED_MODE_DATA					PTB->PSOR = BIT(10)
+#define OLED_MODE_CMD					PTB->PCOR = BIT(10)
+#define OLED_MODE(state)				{ if(state) { OLED_MODE_DATA; } else { OLED_MODE_CMD; } }
+
+#define OLED_PWR_ON						PTB->PSOR = BIT(11)
+#define OLED_PWR_OFF					PTB->PCOR = BIT(11)
+#define OLED_PWR(state)					{ if(state) { OLED_PWR_ON; } else { OLED_PWR_OFF; } }
+
+#define	BATT1_OK						IS_BIT_SET(PTB->PDIR, 18)
+#define	BATT2_OK						IS_BIT_SET(PTB->PDIR, 19)
+
+#define	PWR_SW0_OK						IS_BIT_SET(PTC->PDIR, 8)
+#define	PWR_SW1_OK						IS_BIT_SET(PTC->PDIR, 9)
+#define	PWR_SW2_OK						IS_BIT_SET(PTC->PDIR, 16)
+#define	PWR_SW3_OK						IS_BIT_SET(PTC->PDIR, 17)
+#define	PWR_SW4_OK						IS_BIT_SET(PTE->PDIR, 2)
+#define	PWR_SW5_OK						IS_BIT_SET(PTE->PDIR, 3)
+#define	PWR_SW6_OK						IS_BIT_SET(PTE->PDIR, 4)
+#define	PWR_SW7_OK						IS_BIT_SET(PTE->PDIR, 5)
+
+//==============================================================================
+#endif

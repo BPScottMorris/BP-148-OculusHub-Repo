@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<projectDescription>
+	<name>BpApplication</name>
+	<comment></comment>
+	<projects>
+		<project>BpClasses</project>
+		<project>BpDevices_K22</project>
+	</projects>
+	<buildSpec>
+	</buildSpec>
+	<natures>
+	</natures>
+</projectDescription>

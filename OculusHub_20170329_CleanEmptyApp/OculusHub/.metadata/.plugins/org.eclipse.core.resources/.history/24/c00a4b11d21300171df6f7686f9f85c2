@@ -1,0 +1,248 @@
+#include "oculushub_main.hpp"
+
+//==============================================================================
+//Class Implementation...
+//==============================================================================
+//CBattDistMain
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor that initialises the hardware and operating systems
+*/
+CBattDistMain::CBattDistMain()
+{
+	//Set all the power outputs to off
+	this->PowerControlOff(PWR_ENABLE_ALL_MASK);
+
+	//Ensure the OLED display is off (it has a specific power up sequence)
+	OLED_PWR_OFF;
+
+	//Initialise the SPI port and its chip-select inactive states (for the SPI display)
+	_spi = new CSpiPort(0);
+	_spi->Enable(true);
+
+	//Create a low level driver for the Display controller SSD1306 device
+	_spiOled = new CSpiSSD1306(_spi, SPI_OLED_CHAN);
+
+	//Create a device to allow GDI control of the display
+	_gdiOled = new CGdiDeviceSSD1306(_spiOled);
+	_gdiOled->PaletteDefaults();
+
+	//Create a display service for managing the display contents
+	_display = new CDisplay(_gdiOled);
+	_display->SetEnabled(true);
+
+	//Create a manager for handling display messages
+	_displayManager = new CDisplayManager();
+
+	//Create display contents objects
+	_dispMain = new CDisplayConfig();
+	_dispButton = new CDisplayConfig();
+	_dispButtonLongEn = false;
+	_dispButtonExtendedEn = false;
+
+	//Setup the display enable and timeout variables
+
+
+	//Initialise the ADC device
+	/*
+	_adc = new CAdcDevice(ADC_ID);
+	_adc->Calibrate();
+	*/
+
+	//Create the ADC channel for monitoring the motor current
+	/*
+	TAdcSettings adcSettings;
+	adcSettings.SampleCont = false;						//Use single sampling mode
+	adcSettings.SampleIRQ = false;						//Prevent IRQ's to be generated
+	adcSettings.ClkSource = adcBusClkDiv2;
+	adcSettings.ClkDiv = addClkDiv8;
+	adcSettings.SampleAveraging = advAverage32;
+	adcSettings.SampleChannel = ADC_CHAN_DISABLED;		//Selects the sampling channel
+	adcSettings.SampleLowPower = true;
+	adcSettings.SampleTime = adtLong20;
+	adcSettings.SampleFormat = adf16BitSingle;
+	adcSettings.SampleHighSpeed = true;
+	adcSettings.SampleMuxBank = admBankA;
+	_adcChannel = new CAdcChannel(_adc);
+	_adcChannel->SetSettings(&adcSettings);
+	*/
+
+	//Initialise the analogue service
+	/*
+	_analogue = new CAnalogue(_adcChannel);
+	_analogue->SetServiceFrequency(ANALOGUE_SERVICE_FREQ);
+	_analogue->SetEnabled(true);
+	//_analogue->OnStatus.Set(this, &CBattDistMain::HandleAnalogueStatus);
+	*/
+
+	//Initialise the settings storage object
+	//_flashSettings = new CFlashData(_flash, FLASH_SETTINGS_START, FLASH_SETTINGS_SIZE);
+
+	//Create a timer for servicing the button
+	_buttonTmr = new CTickTimer();
+	_buttonTmr->SetFrequency(BUTTON_SERVICE_FREQUENCY);
+	_buttonTmr->SetEnabled(true);
+
+	//Create a timer for servicing the button
+	_faultTmr = new CTickTimer();
+	_faultTmr->SetFrequency(FAULT_SERVICE_FREQUENCY);
+	_faultTmr->SetEnabled(true);
+
+	//Create a timer for servicing the button
+	_fsmTmr = new CTickTimer();
+	_fsmTmr->SetFrequency(FSM_SERVICE_FREQUENCY);
+	_fsmTmr->SetEnabled(true);
+
+	//Initialise the FSM variables
+	_fsmState = BATTDIST_OFF;
+	_fsmTmoCtr = 0;
+	_fsmTmoFlag = false;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+CBattDistMain::~CBattDistMain()
+{
+}
+
+/*!-----------------------------------------------------------------------------
+Function called when a CID_SYS_REBOOT command has been issued, allowing the
+system to shut down services.
+*/
+void CBattDistMain::DoReboot()
+{
+}
+
+/*!-----------------------------------------------------------------------------
+Function called to start the application running
+*/
+void CBattDistMain::DoRun()
+{
+	//Set all the power outputs to off
+	this->PowerControlOff(PWR_ENABLE_ALL_MASK);
+
+	//Clear the receiver, and prevent command processing until bootup
+	_cmdProcEn = false;
+	_com->Clear(true, false);
+
+	//Clear button press detection variables
+	_buttonRaw = PWR_BUTTON;
+	_buttonRawCnt = 0;
+	_buttonPressed = false;
+	_buttonReleased = false;
+	_buttonDuration = BUTTON_NONE;
+	_buttonState = false;
+	_buttonStateLatch = false;
+	_buttonHeld = false;
+	_buttonHeldLatch = false;
+	_buttonTmr->Reset();
+
+	//Initialise the fault monitoring system
+	for(uint8 i = 0; i < PWR_FAULTS; i++) {
+		_faultRawCnt[i] = 0;
+	}
+	_faultRaw = this->FaultsRead();
+	_faultState = _faultRaw;
+	_faultStateLatch = _faultRaw;
+	_faultTmr->Reset();
+
+	//Start the analogue sensor service
+	//_analogue->ServiceStart();
+
+	//Initialise the display hardware
+	OLED_PWR(true);		//Power up the display module
+	_spiOled->Open();
+	_spiOled->Initialise(true);	//Initialise for use with external VCC supply
+
+	//Start the display service
+	_display->SetDisplayMain(_dispMain);
+	_display->SetDisplayTemp(NULL);
+	_display->ServiceStart();
+
+	//Clear down the display manager
+	_displayManager->Clear();
+
+	//Create some dummy displays
+	//Alerts
+	//_displayManager->Set(new CDisplayConfig(0xF5, LAYOUT_STD, ICON_ALERT, ICON_BATT_VERT_PORT, FONT_MED, "BATT LOW"));
+	//_displayManager->Set(new CDisplayConfig(0xF2, LAYOUT_STD, ICON_ALERT, ICON_VACUUM, FONT_MED, "NO VACUUM"));
+	//_displayManager->Set(new CDisplayConfig(0xFF, LAYOUT_STD, ICON_ALERT, ICON_SUPPLY, FONT_MED, "THRUSTER 3"));
+	//_displayManager->Set(new CDisplayConfig(0xF1, LAYOUT_STD, ICON_ALERT, ICON_WATER));
+	//_displayManager->Set(new CDisplayConfig(0xF7, LAYOUT_STD, ICON_ALERT, ICON_INSULATION, FONT_MED, "FRONT DIST"));
+	//Info
+	_displayManager->Set(new CDisplayConfig(0x72, LAYOUT_PARAM, ICON_BATT_VERT_PORT, FONT_LARGE, "95%"));
+	_displayManager->Set(new CDisplayConfig(0x73, LAYOUT_PARAM, ICON_BATT_VERT_STBD, FONT_LARGE, "94%"));
+	_displayManager->Set(new CDisplayConfig(0x75, LAYOUT_PARAM, ICON_VACUUM, FONT_LARGE, "780", "mb"));
+	_displayManager->Set(new CDisplayConfig(0x71, LAYOUT_PARAM, ICON_TEMPERATURE, FONT_LARGE, "37°C"));
+
+	//Initialise the system state machine
+	_fsmTmr->Reset();
+	_fsmTmoCtr = 0;
+	_fsmTmoFlag = false;
+	this->FsmSetState(BATTDIST_INIT_ON);
+
+	//Output some status information
+	COM_PRINT("%s\r\n", CSI_RESET_LINE);
+	COM_PRINT("SRS FUSION BATTERY-DISTRIBUTION\r\n");
+	//COM_PRINT("Copyright (c) 2016 Strategic Robotic Systems Inc. All rights reserved.\r\n");
+	//COM_PRINT("For further information, visit http://www.srsfusion.com\r\n");
+	COM_PRINT("v%u.%u.%u (%s)", FIRMWARE_VERSION_MAJOR, FIRMWARE_VERSION_MINOR, FIRMWARE_VERSION_BUILD, FIRMWARE_DATE);
+	DEBUG_PRINT(" [DEBUG]");
+	COM_PRINT("\r\n");
+
+	//Send a "Ready" message (for Main Application)
+	//this->CmdSend_Ready();
+
+	//Start the main loop
+	while(_run) {
+		//Service the analogue sensors - run at the end of each cycle of sampling the sensors
+		/*
+		if(_analogue->Service()) {
+			//Get the analogue values
+			TAnalogueStatus anaState;
+			_analogue->GetStatus(&anaState);
+		}
+		*/
+
+		//Service the command processor (if enabled - disabled during shut down)
+		//(is enabled when the VCB is started)
+		if(_cmdProcEn) {
+			_cmd->Service();
+		}
+
+		//Service the push-button
+		this->ButtonService();
+
+		//If a button is pressed, then wake the display up (with a timeout).
+		//If the display is enabled, the timeout won't have any effect
+		if(_buttonPressed) {
+			_display->SetDisplayOnTmo();
+		}
+
+		//Service fault signals
+		this->FaultsService();
+
+		//Service the state machine
+		this->FsmService();
+
+		//Service the display
+		_display->Service();
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that handles the action event from the flash programmer
+
+void CBattDistMain::FlashProgActionEvent(PFlashProgActionParams params)
+{
+	switch(params->Action) {
+		case FPROG_ACTION_PROG_INIT :
+		case FPROG_ACTION_PROG_UPDATE :
+		case FPROG_ACTION_UPDATE_START : {
+			break;
+		}
+	}
+}
+*/
+
+//==============================================================================

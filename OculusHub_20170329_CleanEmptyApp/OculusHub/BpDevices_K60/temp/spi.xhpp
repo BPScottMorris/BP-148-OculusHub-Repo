@@ -1,0 +1,172 @@
+/*==============================================================================
+C++ Module that provides the definitions and implementation for a wrapper class
+to provide management and access functions for an SPI Kinetis peripheral.
+
+03/09/2013 - Created v1.0 of file
+==============================================================================*/
+//Prevent multiple inclusions of this file
+#ifndef SPI_HPP
+#define SPI_HPP
+
+//Include system libraries
+#include <cmath>
+
+//Include common type definitions and macros
+#include "common.h"
+#include "callback.hpp"
+
+//Include the processor platform
+#include "processor.h"
+
+//==============================================================================
+//Class Definition...
+//==============================================================================
+#define SPI_CHANNELS			6		/*!< Defines the number of Channels (Chip Selects) the SPI module supports */
+
+//Constants for use with SPI_CTAR_PBR(x)
+#define SPI_CTAR_PBR_DIV2		0
+#define SPI_CTAR_PBR_DIV3		1
+#define SPI_CTAR_PBR_DIV5		2
+#define SPI_CTAR_PBR_DIV7		3
+
+//Constants for use with SPI_CTAR_BR(x)
+#define SPI_CTAR_BR_DIV2		0
+#define SPI_CTAR_BR_DIV4		1
+#define SPI_CTAR_BR_DIV6		2
+#define SPI_CTAR_BR_DIV8		3
+#define SPI_CTAR_BR_DIV16		4
+#define SPI_CTAR_BR_DIV32		5
+#define SPI_CTAR_BR_DIV64		6
+#define SPI_CTAR_BR_DIV128		7
+#define SPI_CTAR_BR_DIV256		8
+#define SPI_CTAR_BR_DIV512		9
+#define SPI_CTAR_BR_DIV1024		10
+#define SPI_CTAR_BR_DIV2048		11
+#define SPI_CTAR_BR_DIV4096		12
+#define SPI_CTAR_BR_DIV8192		13
+#define SPI_CTAR_BR_DIV16384	14
+#define SPI_CTAR_BR_DIV32768	15
+
+//Predeclare the class
+class CSpiPort;
+
+/*! Define a pointer for the object */
+typedef CSpiPort* PSpiPort;
+
+/*! 
+Class that implements a wrapper providing management and access functions
+for an SPI hardware peripheral, in master mode.
+*/
+class CSpiPort {
+	private:			
+		SPI_Type* _spi;					/*!< Pointer to the struct accessing SPI hardware registers */		
+		uint8 _csis;					/*!< Bit-field of the Chip Select Inactive States */
+		uint32 _ctar[SPI_CHANNELS];		/*!< The CTAR (Clock Transfer Attributes Register) value to use for the transfer */
+		bool _enabled;					/*!< True when the port peripheral has been enabled */
+		bool _open;						/*!< Flag true when the port is currently open */
+		uint8 _port;					/*!< The port number that has been opened */	
+		uint8 _portChan;				/*!< The chip select to assert during an open session */
+			
+	protected:
+		inline void Init();
+		
+	public:
+		//Construction and Disposal
+		CSpiPort(uint8 port, uint8 csis = 0xFF);
+		virtual ~CSpiPort();
+		
+		//Methods	
+		void Close();
+		void Enable(bool state);
+		inline bool IsOpen();
+		bool Open(uint8 chan);				
+		uint16 PopBytes(puint8 buf, uint16 cnt);
+		bool PopByte(puint8 data = NULL);
+		uint16 PushBytes(puint8 buf, uint16 cnt);
+		bool PushByte(uint8 data, bool last = false);
+		void SetChannel(uint8 chan, bool csis, uint32 ctar);
+		uint16 ShiftBytes(puint8 bufTx, puint8 bufRx, uint16 cnt);
+		bool ShiftByte(uint8 dataTx, puint8 dataRx = NULL, bool last = false);
+		bool ShiftFifo();		
+};
+
+//------------------------------------------------------------------------------
+//Predeclare the classs
+class CSpiDevice;
+
+/*! Define a pointer for the object */
+typedef CSpiDevice* PSpiDevice;
+
+typedef struct {
+	bool csis;			/*!< The Chip Select Inactive State for the SPI Channel */
+	uint8 framesize;	/*!< The number of bits to send in a frame - i.e. 8 */
+	bool cpol;			/*!< The clock polarity (0 = Sclk inactive low, 1 = Sclk inactive high) */
+	bool cpha;			/*!< The clock phase (0 = Data is captured on the leading edge of SCK and changed on the following edge, 1 = Data is changed on the leading edge of SCK and captured on the following edge) */
+	bool lsbfirst;		/*!< True for sent Least Significant Bit first */
+} TSpiDeviceConfig;
+
+/*!
+Base class from which devices wishing to use an SPI port should inherit from
+*/
+class CSpiDevice {
+	private:						
+		
+	protected:	
+		PSpiPort _spi;								/*!< Pointer to the SPI port to use for EEPROM access */
+		uint8 _spiChan;								/*!< The chip select to use for EEPROM access */
+		bool _spiCsis;								/*!< The chip select inactive state for the device */
+		uint32 _spiCtar;							/*!< Register holding the CTAR value to us */
+		bool _spiOpen;								/*!< True when the SPI port is open */
+
+		void InitialiseSpi(bool csis, uint32 ctar);
+
+	public:
+		//Construction and Disposal
+		CSpiDevice(PSpiPort spi, uint8 chan);
+		virtual ~CSpiDevice();
+		
+		//Methods		
+		virtual void Close();
+		virtual bool IsOpen();
+		virtual bool Open();
+};
+
+//==============================================================================
+//Interrupt Handler Definitions...
+//==============================================================================
+#ifndef SPI_PERIPHERALS
+	PRAGMA_ERROR("Number of SPI peripherals not defined")
+#endif
+
+//If explicitly previously allowed, disable IRQ's for devices
+#ifndef SPI0_CONNECT_IRQ
+	#define SPI0_CONNECT_IRQ	false
+#endif
+#ifndef SPI1_CONNECT_IRQ
+	#define SPI1_CONNECT_IRQ	false
+#endif
+#ifndef SPI2_CONNECT_IRQ
+	#define SPI2_CONNECT_IRQ	false
+#endif
+
+//Include prototypes for hardware Interrupt handlers (See Interrupt Vector Table)
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#if SPI0_CONNECT_IRQ
+void ISR_SPI0(void)	__attribute__ ((interrupt));
+#endif
+#if SPI1_CONNECT_IRQ
+void ISR_SPI1(void)	__attribute__ ((interrupt));
+#endif
+#if SPI2_CONNECT_IRQ
+void ISR_SPI2(void)	__attribute__ ((interrupt));
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+//==============================================================================
+#endif

@@ -1,0 +1,162 @@
+#include "dac.hpp"
+
+//==============================================================================
+//Implementation...
+//==============================================================================
+//CDac
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor for the class
+@param[in]	ftmId	The index of the flex timer module to use
+*/
+CDac::CDac(uint8 dacId)
+{
+	//Get the pointer to the DAC hardware to use
+	_id = dacId;
+	switch(_id) {
+		case 0 : { _dac = DAC0; break; }
+		case 1 : { _dac = DAC1; break; }
+		default : { _dac = NULL; break; }
+	}
+
+	//Initialise variables
+	_enabled = false;
+	this->SetEnabled(false);
+	this->SetRefSource(DAC_REF1, 3.3);
+	this->SetOutputVal(0);
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the class
+*/
+CDac::~CDac()
+{
+	this->SetEnabled(false);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that returns if the FTM hardware clock is enabled, and register
+access is allowed.
+*/
+bool CDac::IsEnabled()
+{
+	return _enabled;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+DAC_Type* CDac::GetRegisters()
+{
+	return _dac;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that enables or disables the hardware clock to the peripheral.
+@param[in]	state	True to enable the module
+@result				True if the module was successfully enabled
+*/
+bool CDac::SetEnabled(bool state)
+{
+	if(_dac) {
+		if(state) {
+			//Turn on the clock to the module
+			switch(_id) {
+				case 0 : { SET_BIT(SIM->SCGC2, SIM_SCGC2_DAC0_SHIFT); _enabled = true; break; };
+				case 1 : { SET_BIT(SIM->SCGC2, SIM_SCGC2_DAC1_SHIFT); _enabled = true; break; };
+				default : { _enabled = false; break; }
+			}
+
+			//Restore settings
+			this->SetRefSource(_ref, _refVoltage);
+			this->SetOutputVal(_value);
+
+			//Enable the DAC, with software trigger
+			SET_BITS(_dac->C0, DAC_C0_DACEN_MASK | DAC_C0_DACTRGSEL_MASK);
+		}
+		else {
+			if(_enabled) {
+				//Disable the DAC
+				CLR_BIT(_dac->C0, DAC_C0_DACEN_SHIFT);
+			}
+
+			//Indicate the hardware is now disabled
+			_enabled = false;
+
+			//Disable the clock to the FTM module
+			switch(_id) {
+				case 0 : { CLR_BIT(SIM->SCGC2, SIM_SCGC2_DAC0_SHIFT); break; };
+				case 1 : { CLR_BIT(SIM->SCGC2, SIM_SCGC2_DAC1_SHIFT); break; };
+			}
+		}
+	}
+	else {
+		_enabled = false;
+	}
+
+	return _enabled;
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the DAC voltage reference output
+*/
+void CDac::SetRefSource(EDacRefSource refSrc, float voltage)
+{
+	_ref = refSrc;
+
+	//Set and clamp the reference voltage to acceptable limits from the Kinetis datasheet
+	if(voltage > 3.6)
+		_refVoltage = 3.6;
+	else if(voltage < 1.2)
+		_refVoltage = 1.2;
+	else
+		_refVoltage = voltage;
+
+	if(_enabled) {
+		if(_ref == DAC_REF1)
+			CLR_BIT(_dac->C0, DAC_C0_DACRFS_SHIFT);
+		else
+			SET_BIT(_dac->C0, DAC_C0_DACRFS_SHIFT);
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the DAC value as a percentage of the maximum scale
+@param value is a number from 0 to 1 specifying the percentage to use
+*/
+void CDac::SetOutputPct(float value)
+{
+	if(value < 0.0)
+		this->SetOutputVal(0);
+	else if(value > 1.0)
+		this->SetOutputVal(DAC_MAX_VAL);
+	else
+		this->SetOutputVal((float)DAC_MAX_VAL * value);
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the DAC output (if enable) to a specific value
+*/
+void CDac::SetOutputVal(uint16 value)
+{
+	_value = value;
+
+	if(_enabled) {
+		puint16 ptr = (puint16)&_dac->DAT[0];
+		*ptr = value;
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Function that sets the DAC output to a specific voltage, based on the reference voltage
+*/
+void CDac::SetOutputVoltage(float voltage)
+{
+	if(voltage < 0.0)
+		this->SetOutputVal(0);
+	else if(voltage >= _refVoltage)
+		this->SetOutputVal(DAC_MAX_VAL);
+	else
+		this->SetOutputVal(((voltage * (float)DAC_STEPS) / _refVoltage) - 1.0);	//Equation from Kinetis TRM
+}
+
+//==============================================================================

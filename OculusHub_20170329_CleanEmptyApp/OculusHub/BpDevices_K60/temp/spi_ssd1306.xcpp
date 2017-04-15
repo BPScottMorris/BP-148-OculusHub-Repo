@@ -1,0 +1,381 @@
+#include "spi_ssd1306.hpp"
+
+//==============================================================================
+//Class Implementation...
+//==============================================================================
+//CSpiSSD1306
+//==============================================================================
+/*!-----------------------------------------------------------------------------
+Constructor for the class
+@param spi Pointer to the SPI Port object to use for data transfer
+@param chan The SPI ChipSelect channel this device uses
+*/
+CSpiSSD1306::CSpiSSD1306(PSpiPort spi, uint8 chan) : base(spi, chan)
+{
+	//Chip Select Inactive State high
+	uint8 csis = true;
+
+	//Setup the Channel Transfer Attributes
+	uint32 ctar = 0;
+	CLR_BITS(ctar, SPI_CTAR_FMSZ_MASK);
+	SET_BITS(ctar, SPI_CTAR_FMSZ(7));		//Set the frame size for 8 bits
+	CLR_BIT(ctar, SPI_CTAR_CPOL_SHIFT);		//Clock polarity, SCK low when inactive.
+	CLR_BIT(ctar, SPI_CTAR_CPHA_SHIFT);		//Clock phase, Data is captured on the leading edge of SCK and changed on the following edge.
+	CLR_BIT(ctar, SPI_CTAR_LSBFE_SHIFT);	//Data is sent MSB first
+
+	//Set the clock for 5MHz from a 60MHz Peripheral Clock source
+	SET_BITS(ctar, SPI_CTAR_PBR(SPI_CTAR_PBR_DIV2));
+	SET_BITS(ctar, SPI_CTAR_BR(SPI_CTAR_BR_DIV6));
+
+	//Configure the SPI channel for the device specific settings
+	this->InitialiseSpi(csis, ctar);
+
+	//Setup the initial brightness level
+	_brightness = 0;
+}
+
+/*!-----------------------------------------------------------------------------
+Destructor for the class
+*/
+CSpiSSD1306::~CSpiSSD1306()
+{
+}
+
+/*!-----------------------------------------------------------------------------
+Function that clears the display to the specified contents value
+*/
+void CSpiSSD1306::Clear(uint8 value)
+{
+	for(uint8 i=0; i < 8; i++) {
+		this->SendStartPage(i);
+		this->SendStartColumn(0x00);
+
+		for(uint8 j=0; j < 128; j++) {
+			this->WriteData(value);
+		}
+	}
+}
+
+/*!-----------------------------------------------------------------------------
+Initialise the OLED display
+@param extVCC set true specified that the internal charge pump should be disabled as VCC is being externally supplied
+*/
+void CSpiSSD1306::Initialise(bool extVcc)
+{
+	CSysTick::WaitMilliseconds(50);
+
+	this->SendDisplayOn(false);				// Display Off
+
+	this->SendStartColumn(0);
+	this->SendStartLine(0);
+	this->SendAddressingMode(0);			// Set Page Addressing Mode (0=Auto-Inc Col, then Auto-Inc Page, 2=Auto-Inc Col only, no auto-inc page)
+	//this->SendAddressingMode(2);			// Set Page Addressing Mode (0=Auto-Inc Col, then Auto-Inc Page, 2=Auto-Inc Col only, no auto-inc page)
+	if(extVcc)
+		this->SendContrastControl(0x8F);
+	else
+		this->SendContrastControl(0xCF);
+	this->SendSegmentRemap(true);			// Set SEG/Column Mapping (Map Col 127 to SEG0)
+	this->SendInverseDisplay(false);		// Pixel TRUE values indicate display 'on'
+	this->SendMultiplexRatio(0x3F);			// 1/64 Duty (0x0F~0x3F)
+	this->SendDisplayOffset(0);				// Shift Mapping RAM Counter (0x00~0x3F)
+	this->SendDisplayClock(0, 8);			// Set Clock as 100 Frames/Sec (Divide by 0, Frequency 8 = ~390kHz)
+	if(extVcc)
+		this->SendPrechargePeriod(2, 2);	// Set Pre-Charge as 2 Clocks & Discharge as 2 Clock
+	else
+		this->SendPrechargePeriod(1, 15);	// Set Pre-Charge as 15 Clocks & Discharge as 1 Clock
+	this->SendCommonConfig(1);				// Set Alternative COM Configuration, Disable COM Left-Right remap
+	this->SendCommonRemap(true);			// Set COM/Row Scan Direction (0x00/0x08)
+	this->SendVCOMH(0x40);					// Set VCOM Deselect Level
+	this->SendChargePump(!extVcc);			// Enable/Disable Embedded DC/DC Converter
+
+	this->SendInverseDisplay(false);		// Disable Inverse Display On
+	this->SendEntireDisplay(false);			// Disable Entire Display On
+
+	//this->SendDisplayOn(false);			// Display Off
+	//this->SendDisplayClock(0x0, 0x8);		// Set Clock as 100 Frames/Sec (Divide by 0, Frequency 8 = ~390kHz)
+	//this->SendMultiplexRatio(0x3F);		// 1/64 Duty (0x0F~0x3F)
+	//this->SendDisplayOffset(0x00);		// Shift Mapping RAM Counter (0x00~0x3F)
+	//this->SendStartLine(0x00);			// Set Mapping RAM Display Start Line (0x00~0x3F)
+	//this->SendChargePump(!extVCC);		// Enable/Disable Embedded DC/DC Converter
+	//this->SendAddressingMode(0x02);		// Set Page Addressing Mode (0x00/0x01/0x02)
+	//this->SendSegmentRemap(true);			// Set SEG/Column Mapping (Map Col 127 to SEG0)
+	//this->SendCommonRemap(true);			// Set COM/Row Scan Direction (0x00/0x08)
+	//this->SendCommonConfig(1);			// Set Sequential Configuration (0x00/0x10)
+	//this->SendContrastControl(brightness);// Set SEG Output Current
+	//this->SendPrechargePeriod(0xF1);		// Set Pre-Charge as 15 Clocks & Discharge as 1 Clock
+	//this->SendVCOMH(0x40);				// Set VCOM Deselect Level
+	//this->SendEntireDisplay(false);		// Disable Entire Display On (0x00/0x01)
+	//this->SendInverseDisplay(false);		// Disable Inverse Display On (0x00/0x01)
+
+	this->Clear();							// Clear Screen
+
+	this->SendDisplayOn(true);				// Display On (0x00/0x01)
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendStartColumn(uint8 value)
+{
+	//Set Lower Column Start Address for Page Addressing Mode
+	//Default => 0x00
+	this->WriteCommand(0x00 + (value % 16));
+	//Set Higher Column Start Address for Page Addressing Mode
+	//Default => 0x10
+	this->WriteCommand(0x10 + (value / 16));
+
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendAddressingMode(uint8 value)
+{
+	//Set Memory Addressing Mode
+	this->WriteCommand(0x20);
+	//Default => 0x02
+	//0x00 => Horizontal Addressing Mode
+	//0x01 => Vertical Addressing Mode
+	//0x02 => Page Addressing Mode
+	this->WriteCommand(value);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendColumnAddress(uint8 start, uint8 end)
+{
+	//Set Column Address
+	this->WriteCommand(0x21);
+	//Default => 0x00 (Column Start Address)
+	this->WriteCommand(start);
+	//Default => 0x7F (Column End Address)
+	this->WriteCommand(end);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendPageAddress(uint8 start, uint8 end)
+{
+	//Set Page Address
+	this->WriteCommand(0x22);
+	//Default => 0x00 (Page Start Address)
+	this->WriteCommand(start);
+	//Default => 0x07 (Page End Address)
+	this->WriteCommand(end);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendStartLine(uint8 value)
+{
+	//Set Display Start Line
+	//Default => 0x40 (0x00)
+	this->WriteCommand(0x40 | value);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendContrastControl(uint8 value)
+{
+	//Store the new brightness
+	_brightness = value;
+
+	//Set Contrast Control
+	this->WriteCommand(0x81);
+	//Default => 0x7F
+	this->WriteCommand(value);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendChargePump(bool value)
+{
+	// Set Charge Pump
+	this->WriteCommand(0x8D);
+	//Default => 0x10
+	//0x10 (0x00) => Disable Charge Pump
+	//0x14 (0x04) => Enable Charge Pump
+	this->WriteCommand((value) ? 0x14 : 0x10);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendSegmentRemap(bool value)
+{
+	//Set Segment Re-Map
+	//Default => 0xA0
+	//0xA0 (0x00) => Column Address 0 Mapped to SEG0
+	//0xA1 (0x01) => Column Address 0 Mapped to SEG127
+	this->WriteCommand((value) ? 0xA1 : 0xA0);
+
+}
+
+/*!-----------------------------------------------------------------------------
+Forces all pixels to an ON state for self-test
+*/
+void CSpiSSD1306::SendEntireDisplay(bool value)
+{
+	//Set Entire Display On / Off
+	//Default => 0xA4
+	//0xA4 (0x00) => Normal Display
+	//0xA5 (0x01) => Entire Display On
+	this->WriteCommand((value) ? 0xA5 : 0xA4);
+
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendInverseDisplay(bool value)
+{
+	//Set Inverse Display On/Off
+	//Default => 0xA6
+	//0xA6 (0x00) => Normal Display
+	//0xA7 (0x01) => Inverse Display On
+	this->WriteCommand((value) ? 0xA7 : 0xA6);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendMultiplexRatio(uint8 value)
+{
+	// Set Multiplex Ratio
+	this->WriteCommand(0xA8);
+	// Default => 0x3F (1/64 Duty)
+	this->WriteCommand(value);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendDisplayOn(bool value)
+{
+	//Set Display On/Off
+	//Default => 0xAE
+	//0xAE (0x00) => Display Off
+	//0xAF (0x01) => Display On
+	this->WriteCommand((value) ? 0xAF : 0xAE);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendStartPage(uint8 value)
+{
+	//Set Page Start Address for Page Addressing Mode
+	//Default => 0xB0 (0x00)
+	this->WriteCommand(0xB0 | value);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendCommonRemap(bool value)
+{
+	//Set COM Output Scan Direction
+	//Default => 0xC0
+	//0xC0 (0x00) => Scan from COM0 to 63
+	//0xC8 (0x08) => Scan from COM63 to 0
+	this->WriteCommand((value) ? 0xC8 : 0xC0);
+
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendDisplayOffset(uint8 value)
+{
+	//Set Display Offset
+	this->WriteCommand(0xD3);
+	//Default => 0x00
+	this->WriteCommand(value);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendDisplayClock(uint8 divider, uint8 frequency)
+{
+	//Set Display Clock Divide Ratio / Oscillator Frequency
+	this->WriteCommand(0xD5);
+	//Default => 0x80
+	//D[3:0] => Display Clock Divider
+	//D[7:4] => Oscillator Frequency
+	uint8 d = ((frequency & 0xF) << 4) | (divider & 0xF);
+	this->WriteCommand(d);
+}
+
+/*!-----------------------------------------------------------------------------
+@param phase1 is the discharge period
+@param phase2 is the pre-charge period
+*/
+void CSpiSSD1306::SendPrechargePeriod(uint8 phase1, uint8 phase2)
+{
+	//Set Pre-Charge Period
+	this->WriteCommand(0xD9);
+	//Default for ExtVCC => 0x22 (2 Display Clocks [Phase 2] / 2 Display Clocks [Phase 1])
+	//Default for IntVCC => 0xF1 (15 Display Clocks [Phase 2] / 1 Display Clocks [Phase 1])
+	//D[3:0] => Phase 1 Period in 1~15 Display Clocks
+	//D[7:4] => Phase 2 Period in 1~15 Display Clocks
+	uint8 d = ((phase2 & 0xF) << 4) | (phase1 & 0xF);
+	this->WriteCommand(d);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendCommonConfig(uint8 value)
+{
+	// Set COM Pins Hardware Configuration
+	this->WriteCommand(0xDA);
+	//Default => 0x12 (0x10)
+	//Alternative COM Pin Configuration
+	//Disable COM Left/Right Re-Map
+	this->WriteCommand(((value & 0x03) << 4) | 0x02);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendVCOMH(uint8 value)
+{
+	//Set VCOMH Deselect Level
+	this->WriteCommand(0xDB);
+	//Default => 0x20 (0.77*VCC)
+	this->WriteCommand(value);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+void CSpiSSD1306::SendNOP()
+{
+	//Command for No Operation
+	this->WriteCommand(0xE3);
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CSpiSSD1306::WriteCommand(uint8 cmd)
+{
+	if(_spiOpen) {
+		//Switch to CMD mode
+		SPI_SSD1306_IO_MODE_CMD;
+
+		//Send the byte out
+		_spi->ShiftByte(cmd, NULL, true);
+
+		//Indicate success
+		return true;
+	}
+	return false;
+}
+
+/*!-----------------------------------------------------------------------------
+*/
+bool CSpiSSD1306::WriteData(uint8 data)
+{
+	if(_spiOpen) {
+		//Switch to DATA mode
+		SPI_SSD1306_IO_MODE_DATA;
+
+		//Send the byte out
+		_spi->ShiftByte(data, NULL, true);
+
+		//Indicate success
+		return true;
+	}
+	return false;
+}
+
+//==============================================================================
+

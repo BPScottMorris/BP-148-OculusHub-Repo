@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Delete resource &apos;OculusHubMain/SrsBattDist_Src&apos;" deleteContents="false" description="Delete resource &apos;OculusHubMain/SrsBattDist_Src&apos;" element1="/OculusHubMain/SrsBattDist_Src" flags="7" id="org.eclipse.ltk.core.refactoring.delete.resources" resources="1" stamp="1490787701825"/>
+</session>

@@ -1,0 +1,78 @@
+/*==============================================================================
+C++ Module that provides the definitions and implementation for a class that
+provides functionality for a PWM Class-D Full-Bridge Driver with dual complimentary
+PWM drive outputs and dead-time insertion.
+
+This module is suitable for use as the basic building block for full-bridge
+transmitter drives, where two complimentary PWM outputs (with dead-time insertion)
+are used to drive bipolar dual-FET bridge drivers IC's connected to either end 
+or a transformer primary winding.
+
+The PWM period is set from the FTM frequency/modulo value, and FTM channel 'n' is
+used to specify the FTM counter time at which the positive drive output rises (turns ON)
+(refereferredred to as the front edge), and FTM channel 'n+1' specifies the FTM counter time
+it falls (turns OFF) (referred to as the back edge).
+The negative (complimentary) PWM drive output performs the inverse of above, with
+dead-time insertion allowing both drive outputs to be momentarily off between switching
+cycles.
+
+To ensure minimum harmonic distortion, the PWM timing should be specified around
+the centre of the FTM modulo period - i.e. if the MODULO register is set to 100,
+then for a 50% duty cycle PWM, the ON timer value is 25 and the OFF timer value is 25.
+For a 20% duty cycle, ON would be at 40, and OFF would be at 60.
+
+To transmit complex waveforms, pre-computed Look-up tables of PWM on and off points
+can be pre-computed (taking the required Modulo value into account), then dynamically
+loaded by the timer ISR.
+
+18/11/2013 - Created V1.0 of file
+==============================================================================*/
+//Prevent multiple inclusions of this file
+#ifndef FTM_DUAL_PWM_HPP
+#define FTM_DUAL_PWM_HPP
+
+//Include the base FTM class to inherit from
+#include "ftm.hpp"
+
+//==============================================================================
+//Class Definition...
+//==============================================================================
+/*!
+Defines a class that enhances an FTM module to provide complimentary Class-D
+style driver PWM controlled outputs.
+*/
+class CFtmDualPwm : public CFtm {	
+	private:
+		typedef CFtm base;
+	
+	private:	
+		EFtmChannelPair	_chanPair;
+		uint8			_chanPairX;
+		uint8			_chanPairY;
+		
+		uint8			_combine;		/*!< Holds the channel combination register values */
+		uint8			_deadtime;		/*!< Holds the deadtime and prescalar register value */
+		
+	protected:
+		//Protected methods			
+		void			DoStart();
+		void			DoStop();
+		void			SetChannelPair(EFtmChannelPair value);
+		
+	public:
+		//Construction & Disposal
+		CFtmDualPwm(uint8 ftmId, EFtmChannelPair chanPair);
+		virtual ~CFtmDualPwm();
+	
+		//Methods		
+		void 			SetDeadtime(EFtmDeadtimePrescalar prescalar, uint8 interval);			
+		inline void		SetPwm(uint16 frontCnt, uint16 backCnt);
+		inline void		SetPwm(float percent);
+	
+};
+
+/*! Define a pointer to a Flex-Timer PWM Module */
+typedef CFtmDualPwm* PFtmDualPwm;
+		
+//==============================================================================
+#endif

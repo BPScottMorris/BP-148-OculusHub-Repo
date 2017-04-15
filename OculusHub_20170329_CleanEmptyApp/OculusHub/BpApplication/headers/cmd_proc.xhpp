@@ -1,0 +1,175 @@
+/*==============================================================================
+File that implements a modular Serial Command Processor
+
+30-08-2016 - Modified to v1.1 For SRS Thruster Board, simplified execution calling
+29-11-2013 - Created V1.0 of the file (R.Sharphouse)
+==============================================================================*/
+//Prevent multiple inclusions of this file
+#ifndef CMDPROC_HPP
+#define CMDPROC_HPP
+
+//Include system libraries
+//#include <math.h>
+//#include <stdarg.h>		//For variable length arguments in functions
+//#include <string.h>		//For string manipulation functions
+//#include <new>			//For the 'nothrow' operator with 'new'
+
+//Include common type definitions and macros
+#include "common.h"
+
+//Include helper classes
+#include "callback.hpp"
+#include "conversion.hpp"
+#include "crc16.hpp"
+#include "serializebuffer.hpp"
+
+//Include the UART device for serial comms
+#include "com_uart.hpp"
+#include "service.hpp"
+
+//Include the Command Processor buffer
+//Additional application specific commands should be defined locally in "cmd_defs.h"
+//#include "cmd_defs.h"
+
+//==============================================================================
+//Class Definition...
+//==============================================================================
+/*! Define the character used to start messages sent from the command processor */
+#define CMD_TX_HEADER_CHAR				'$'
+
+/*! Define the character used to identify the start of messages to the command processor */
+#define CMD_RX_SYNC_CHAR				'#'
+
+/*! Define the character used to abort the startup and force the device to enter bootloader moade */
+#define CMD_RX_ABORT_CHAR				'%'
+
+/*! The number of bytes (not hex char pairs) that can be received in a message payload */
+#define CMD_BUF_LEN						255
+
+//------------------------------------------------------------------------------
+/*! Defines the base type of a command processor ID code */
+typedef uint8 TCmdId;
+
+//Required command definitions
+//Define Command Processor ID Codes (CID)
+#define CID_READY						0x00	/*!< Response code send when bootloader is ready and an abort signal can be sent */
+#define CID_ERROR						0xFF	/*!< Command sent as a status response to unknown or incomplete commands, when a command decode error occurs */
+
+//Define Command Processor Status Codes (CST)
+#define CST_OK							0x00	/*!< Return when a function execution succeeds */
+#define CST_FAIL						0x01	/*!< Returned when a function execution fails (for generic reasons) */
+#define CST_CMD_ID_ERROR				0x02	/*!< Returned when a command cannot be found */
+#define CST_CMD_CHAR_ERROR				0x03	/*!< Returned when an invalid character is encountered when decoding a command */
+#define CST_CMD_OVERFLOW_ERROR			0x04	/*!< Returned when the received command exceeds the command storage length */
+#define CST_CMD_CSUM_ERROR				0x05	/*!< Returned when a commands checksum is invalid */
+#define CST_CMD_LENGTH_ERROR			0x06	/*!< Returned when the received command does not contain enough bytes of data in the payload */
+
+//------------------------------------------------------------------------------
+//Predeclare the command processor classes
+class CCmdMsg;
+class CCmdProc;
+
+/*! Declare a pointer to a command buffer */
+typedef CCmdMsg* PCmdMsg;
+
+/*! Define a pointer to a command processor */
+typedef CCmdProc* PCmdProc;
+
+//------------------------------------------------------------------------------
+/*!
+Define a structure that is passed to methods/functions that are registered to
+handle commands. The struct contains necessary pointers/info to allow command execution
+*/
+struct TCmdProcExecute {
+	PCmdProc CmdProc;				/*!< Pointer to the shell object - so output can be written back */
+	PCmdMsg Msg;					/*!< Pointer to the receive buffer where incoming commands are stored */
+	TCmdId Id;						/*!< The ID code of the message being handled */
+	bool Handled;					/*!< Return flag that should be set to true to indicate the message was handled */
+};
+
+/*! Define a pointer to a shell command structure */
+typedef TCmdProcExecute* PCmdProcExecute;
+
+/*! Define a delegate type to handle execution of shell commands */
+typedef CCallback1<void, PCmdProcExecute> CCmdProcExecuteCallback;
+
+//------------------------------------------------------------------------------
+/*!
+Class that implements a buffer used to store Tx and Rx commands on, and provides
+helper methods for reading and writing them.
+*/
+class CCmdMsg : public CSerializeBuffer {
+	private :
+		/*! Declare easy access to the parent class */
+		typedef CSerializeBuffer base;
+
+	public :
+		//Construction and disposal
+		CCmdMsg(uint16 size = CMD_BUF_LEN);
+		CCmdMsg(TCmdId id, puint8 data, uint16 len);
+};
+
+//------------------------------------------------------------------------------
+/*!
+Class that implements the base functionality for a serial command processor
+*/
+class CCmdProc : public CService {
+	private:
+		typedef CService base;				/*!< Allow access to the base class properties */
+
+	private:
+
+		bool		_decodeEn;
+		int16		_decodeAddr;			/*!< The address of the device obtained during decoding (if enabled), or -1 for not found */
+		uint8		_decodeNibble;
+		PCmdMsg		_decodeMsg;				/*!< Buffer that holds received data from a message */
+		uint8		_decodeValue;
+		PComUart	_uart;					/*!< Pointer to the UART used for serial comms */
+		uint8		_deviceAddr;			/*!< An 8-bit value to match as a device ID priod to an CID message value - used for half-duplex multi-drop comms to address a command processor */
+		bool		_rxUseDeviceAddr;		/*!< True if the command decoder look to match a 'device ID' byte before the CID value, and rejects the messages if this value doesn't match the specified device ID */
+		bool		_rxUseCsum;				/*!< True if receive messages should have a checksum at their end - false to ignore */
+		bool		_rxIgnoreBadChars;		/*!< True to ignore invalid characters in a message */
+
+
+		//Private methods
+		uint16 CalcMsgChecksum(PCmdMsg msg, uint16 csumInit = 0);
+		void Decode(uint8 ch);
+		void DoDestroy();
+		bool DoService(bool timerEvent);
+		bool DoServiceStart();
+		void DoServiceStop();
+		void Execute(PCmdMsg msg);
+		void Print(const pchar str, va_list args);
+		void Write(uint8 data);
+		void WriteHexUint8(uint8 data);
+		void WriteHexUint16(uint16 data);
+		void WriteHexUint32(uint32 data);
+		void WriteHexData(puint8 data, uint16 len);
+
+	public:
+		//Construction and disposal
+		CCmdProc();
+		//~CCmdProc();
+
+		//Methods
+		void Execute(TCmdId id);
+		void Execute(TCmdId id, puint8 data, uint16 len);
+		uint8 GetDeviceAddr();
+		PComUart GetUart();
+		void Print(const string str, ...);
+		void Print(const pchar str, ...);
+		void SendError(uint8 error, uint8 data);
+		void SendMsg(PCmdMsg buf);
+		void SendMsg(TCmdId id, puint8 data, uint16 len);
+		void SetRxUseDeviceAddr(bool enabled, uint8 addr = 0);
+		void SetRxUseCsum(bool value);
+		void SetRxIgnoreBadChars(bool value);
+		void SetUart(PComUart value);
+
+		//Events
+		CCmdProcExecuteCallback OnExecute;
+};
+
+//==============================================================================
+#endif
+
