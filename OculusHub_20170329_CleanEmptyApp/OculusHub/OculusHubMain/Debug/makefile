@@ -9,10 +9,6 @@ RM := rm -rf
 # All of the sources participating in the build are defined here
 -include sources.mk
 -include src/subdir.mk
--include OculusHub_Src/subdir.mk
--include BpDevices_Src/subdir.mk
--include BpClasses_Src/subdir.mk
--include BpApplication_Src/subdir.mk
 -include subdir.mk
 -include objects.mk
 
@@ -63,7 +59,7 @@ main-build: OculusHubMainDebug.elf secondary-outputs
 OculusHubMainDebug.elf: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: Cross ARM C++ Linker'
-	arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -T "C:\Users\s.morris\OculusHub\OculusHubMain\linker_main.ld" -Xlinker --gc-sections -Wl,-Map,"OculusHubMainDebug.map" -specs=nano.specs -specs=nosys.specs -o "OculusHubMainDebug.elf" $(OBJS) $(USER_OBJS) $(LIBS)
+	arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -T "C:\Company\BLUEPRINT\BP_148_Oculus\Top_Box\Firmware\BP-148-OculusHub-Repo\OculusHub_20170329_CleanEmptyApp\OculusHub\OculusHubMain\linker_main.ld" -Xlinker --gc-sections -Wl,-Map,"OculusHubMainDebug.map" -specs=nano.specs -specs=nosys.specs -o "OculusHubMainDebug.elf" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 	$(MAKE) --no-print-directory post-build
@@ -87,12 +83,12 @@ clean:
 
 pre-build:
 	-@echo 'Perform Pre-Build Actions (Incriment version numbers)'
-	-C:/Users/s.morris/OculusHub/OculusHubMain/prebuild.bat DEBUG "C:/Users/s.morris/OculusHub/OculusHubMain"
+	-C:/Company/BLUEPRINT/BP_148_Oculus/Top_Box/Firmware/BP-148-OculusHub-Repo/OculusHub_20170329_CleanEmptyApp/OculusHub/OculusHubMain/prebuild.bat DEBUG "C:/Company/BLUEPRINT/BP_148_Oculus/Top_Box/Firmware/BP-148-OculusHub-Repo/OculusHub_20170329_CleanEmptyApp/OculusHub/OculusHubMain"
 	-@echo ' '
 
 post-build:
 	-@echo 'Perform Post-Build Actions (Compile FWX firmware)'
-	-C:/Users/s.morris/OculusHub/OculusHubMain/postbuild.bat DEBUG "C:/Users/s.morris/OculusHub/OculusHubMain" "OculusHubMainDebug"
+	-C:/Company/BLUEPRINT/BP_148_Oculus/Top_Box/Firmware/BP-148-OculusHub-Repo/OculusHub_20170329_CleanEmptyApp/OculusHub/OculusHubMain/postbuild.bat DEBUG "C:/Company/BLUEPRINT/BP_148_Oculus/Top_Box/Firmware/BP-148-OculusHub-Repo/OculusHub_20170329_CleanEmptyApp/OculusHub/OculusHubMain" "OculusHubMainDebug"
 	-@echo ' '
 
 secondary-outputs: $(SECONDARY_LIST) $(SECONDARY_SIZE)

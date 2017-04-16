@@ -17,7 +17,7 @@ accordingly.
 //Define the Main Application firmware version
 #define FIRMWARE_VERSION_MAJOR	1
 #define FIRMWARE_VERSION_MINOR	0
-#define FIRMWARE_VERSION_BUILD	31    /*!< The auto-incrementing build number */
+#define FIRMWARE_VERSION_BUILD	33    /*!< The auto-incrementing build number */
 
 //=============================================================================
 #endif

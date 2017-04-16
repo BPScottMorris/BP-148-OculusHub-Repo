@@ -1,0 +1,27 @@
+12:25:00 **** Incremental Build of configuration Debug for project OculusHubMain ****
+make pre-build main-build 
+Perform Pre-Build Actions (Incriment version numbers)
+C:/Company/BLUEPRINT/BP_148_Oculus/Top_Box/Firmware/BP-148-OculusHub-Repo/OculusHub_20170329_CleanEmptyApp/OculusHub/OculusHubMain/prebuild.bat DEBUG "C:/Company/BLUEPRINT/BP_148_Oculus/Top_Box/Firmware/BP-148-OculusHub-Repo/OculusHub_20170329_CleanEmptyApp/OculusHub/OculusHubMain"
+Performing pre-build commands at 12:25:00.24, 16/04/2017...
+Pre-build Mode "DEBUG"
+Pre-build Project Directory "C:\Company\BLUEPRINT\BP_148_Oculus\Top_Box\Firmware\BP-148-OculusHub-Repo\OculusHub_20170329_CleanEmptyApp\OculusHub\OculusHubMain"
+Version number not incriment for DEBUG builds.
+
+***                Auto Incrimenter                  ***
+***        For build numbers or other symbols        ***
+*** Copyright 2013, Blueprint Design Engineering Ltd ***
+
+Parsing file "C:\Company\BLUEPRINT\BP_148_Oculus\Top_Box\Firmware\BP-148-OculusHub-Repo\OculusHub_20170329_CleanEmptyApp\OculusHub\OculusHubMain\headers\version.h" for symbol "FIRMWARE_VERSION_BUILD"...
+Found symbol match on line 19
+Value incrimented to "33"
+Pre-build complete
+ 
+Building file: ../src/main.cpp
+Invoking: Cross ARM C++ Compiler
+arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections  -g3 -DDEBUG -I"C:\Company\BLUEPRINT\BP_148_Oculus\Top_Box\Firmware\BP-148-OculusHub-Repo\OculusHub_20170329_CleanEmptyApp\OculusHub\BpClasses\headers" -I"C:\Company\BLUEPRINT\BP_148_Oculus\Top_Box\Firmware\BP-148-OculusHub-Repo\OculusHub_20170329_CleanEmptyApp\OculusHub\BpApplication\headers" -I"C:\Company\BLUEPRINT\BP_148_Oculus\Top_Box\Firmware\BP-148-OculusHub-Repo\OculusHub_20170329_CleanEmptyApp\OculusHub\OculusHubMain\headers" -std=gnu++11 -fabi-version=0 -fno-exceptions -fno-rtti -MMD -MP -MF"src/main.d" -MT"src/main.o" -c -o "src/main.o" "../src/main.cpp"
+../src/main.cpp:7:23: fatal error: processor.h: No such file or directory
+ #include "processor.h"
+                       ^
+compilation terminated.
+src/subdir.mk:21: recipe for target 'src/main.o' failed
+make: *** [src/main.o] Error 1
